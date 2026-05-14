@@ -3,6 +3,7 @@ ARQ Worker.
 FIX BUG-07: verify_action_impact registered in functions list.
 v1.0.0: Removed duplicate `from datetime import...` inside loop body.
 """
+
 from datetime import UTC, datetime, timedelta  # v1.0.0: module-level only
 
 import structlog
@@ -55,7 +56,7 @@ async def run_weekly_receipts(ctx: dict) -> None:
     """
     # ADR-ARCH-001: cap per run to avoid job_timeout SIGKILL dropping shops silently.
     # 30 shops × ~8s = ~240s, safely under 300s timeout with margin for slower AI calls.
-    MAX_SHOPS_PER_RUN = 30
+    MAX_SHOPS_PER_RUN = 30  # noqa: N806
 
     from decimal import Decimal
 
@@ -83,13 +84,15 @@ async def run_weekly_receipts(ctx: dict) -> None:
         # FIX N+1: batch-load all completed actions for all active shops in 1 query
         week_ago = datetime.now(UTC) - timedelta(days=7)
         shop_ids = [s.id for s in shops]
-        all_actions = list(await db.scalars(
-            select(AIAction).where(
-                AIAction.shop_id.in_(shop_ids),
-                AIAction.status == "done",
-                AIAction.completed_at >= week_ago,
+        all_actions = list(
+            await db.scalars(
+                select(AIAction).where(
+                    AIAction.shop_id.in_(shop_ids),
+                    AIAction.status == "done",
+                    AIAction.completed_at >= week_ago,
+                )
             )
-        ))
+        )
         actions_by_shop: dict = {}
         for a in all_actions:
             actions_by_shop.setdefault(a.shop_id, []).append(a)
@@ -98,12 +101,14 @@ async def run_weekly_receipts(ctx: dict) -> None:
         vn_now = datetime.now(UTC) + timedelta(hours=7)
         iso_year, iso_week, _ = vn_now.isocalendar()
         week_label = f"tuần {iso_week}/{iso_year}"
-        existing_receipts = set(await db.scalars(
-            select(WeeklyReceipt.shop_id).where(
-                WeeklyReceipt.shop_id.in_(shop_ids),
-                WeeklyReceipt.period_label == week_label,
+        existing_receipts = set(
+            await db.scalars(
+                select(WeeklyReceipt.shop_id).where(
+                    WeeklyReceipt.shop_id.in_(shop_ids),
+                    WeeklyReceipt.period_label == week_label,
+                )
             )
-        ))
+        )
 
         for shop in shops:
             try:
@@ -123,8 +128,7 @@ async def run_weekly_receipts(ctx: dict) -> None:
                     for a in actions
                 ]
                 total_confirmed = sum(
-                    (a.confirmed_delta or Decimal("0"))
-                    for a in actions if a.is_confirmed_impact
+                    (a.confirmed_delta or Decimal("0")) for a in actions if a.is_confirmed_impact
                 )
 
                 # FIX BUG-NH4 (v2): heuristic estimate per rule_id
@@ -149,8 +153,8 @@ async def run_weekly_receipts(ctx: dict) -> None:
                     continue
 
                 _subscription_cost_map = {
-                    "free":     Decimal("0"),
-                    "pro":      Decimal("99000"),
+                    "free": Decimal("0"),
+                    "pro": Decimal("99000"),
                     "business": Decimal("299000"),
                 }
                 _tier = getattr(shop, "subscription_tier", "free") or "free"
@@ -211,6 +215,13 @@ async def run_weekly_receipts(ctx: dict) -> None:
 
             except Exception as e:
                 log.error("weekly_receipts.shop_failed", shop_id=str(shop.id), error=str(e))
+                # ADR-ASYNC-002: without rollback, dirty ORM objects from the failed shop
+                # (e.g. a receipt added but not flushed) remain in session state. The next
+                # shop iteration would flush them, committing receipt_A despite shop A failing.
+                try:
+                    await db.rollback()
+                except Exception as rb_err:
+                    log.error("weekly_receipts.rollback_failed", error=str(rb_err))
 
         log.info("weekly_receipts.done", total=total, skipped=skipped)
 
@@ -225,7 +236,9 @@ async def cleanup_stuck_imports(ctx: dict) -> None:
     ADR-ARCH-002: case 2 is rare post-fix (process_import now commits before heavy work)
     but kept as defense-in-depth for edge cases and legacy sessions.
     """
-    from sqlalchemy import or_, update as sa_update
+    from sqlalchemy import or_
+    from sqlalchemy import update as sa_update
+
     from app.models.import_session import ImportSession
 
     AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
@@ -272,7 +285,7 @@ class WorkerSettings:
     functions = [process_import, run_weekly_receipts, verify_action_impact, cleanup_stuck_imports]
     cron_jobs = [
         cron(run_weekly_receipts, weekday=0, hour=1, minute=0),
-        cron(cleanup_stuck_imports, minute=5),   # F-08: runs at :05 every hour
+        cron(cleanup_stuck_imports, minute=5),  # F-08: runs at :05 every hour
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup

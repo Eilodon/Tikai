@@ -15,8 +15,9 @@ function pctDisplay(val: string | null | undefined) {
 }
 
 export function WhatIfPanel({ sku, snapshotId, onClose }: WhatIfPanelProps) {
-  const currentAffRate = 0.10  // default if not on snapshot
-  const currentVoucherRate = 0.05
+  const gmv = parseFloat(sku.gmv)
+  const currentAffRate = gmv > 0 ? parseFloat(sku.affiliate_commission) / gmv : 0.10
+  const currentVoucherRate = gmv > 0 ? parseFloat(sku.voucher_cost) / gmv : 0.05
 
   const [affiliateRate, setAffiliateRate] = useState(currentAffRate)
   const [voucherRate, setVoucherRate] = useState(currentVoucherRate)

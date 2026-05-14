@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { shopsApi } from "@/lib/api"
 import { getAuthToken } from "@/lib/supabase"
@@ -7,6 +7,18 @@ import { getAuthToken } from "@/lib/supabase"
 export default function OnboardingPage() {
   const router = useRouter()
   const [shopName, setShopName] = useState("")
+
+  useEffect(() => {
+    getAuthToken().then(async (token) => {
+      if (!token) return
+      try {
+        await shopsApi.getMe(token)
+        router.replace("/import")
+      } catch {
+        // No shop yet — stay on onboarding
+      }
+    })
+  }, [])
   const [tiktokShopId, setTiktokShopId] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

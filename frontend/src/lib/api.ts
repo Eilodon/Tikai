@@ -163,6 +163,8 @@ export interface ImportSessionResponse {
     fee_config_version?: string
   } | null
   ai_rescue_message: ImportRescueMessage | null
+  // P0-1 fix: top 5 SKUs by GMV for post-import COGS prompt
+  top_skus_for_cogs: Array<{ sku_id: string; sku_name: string; gmv: string }>
   created_at: string
   completed_at: string | null  // FIX P0-6: was missing
 }

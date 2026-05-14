@@ -36,6 +36,8 @@ class ImportSessionResponse(BaseModel):
     # Strip it here so it never reaches the client.
     error_summary: dict[str, Any] | None
     ai_rescue_message: ImportRescueMessage | None
+    # P0-1 fix: top 5 SKUs by GMV populated after successful import, for COGS prompt
+    top_skus_for_cogs: list[dict] = []
     created_at: datetime
     updated_at: datetime
 

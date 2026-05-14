@@ -31,8 +31,8 @@ TIER_GATES: dict[str, dict] = {
         Feature.BENCHMARKS:          False,
         Feature.CSV_EXPORT:          False,
         Feature.CREATOR_CRM:         False,
-        Feature.SHOPEE_LAZADA:       False,
-        Feature.AI_CALLS_PER_IMPORT: 3,
+        Feature.SHOPEE_LAZADA:       True,
+        Feature.AI_CALLS_PER_IMPORT: 5,
     },
     "pro": {
         Feature.RE_ANALYSIS:         True,
@@ -42,7 +42,7 @@ TIER_GATES: dict[str, dict] = {
         Feature.BENCHMARKS:          True,
         Feature.CSV_EXPORT:          True,
         Feature.CREATOR_CRM:         "basic",
-        Feature.SHOPEE_LAZADA:       False,
+        Feature.SHOPEE_LAZADA:       True,
         Feature.AI_CALLS_PER_IMPORT: 10,
     },
     "business": {
@@ -63,7 +63,7 @@ UPGRADE_MESSAGES: dict[Feature, str] = {
     Feature.HISTORICAL_WEEKS: "Xem lịch sử quá 4 tuần cần gói Pro (99k/tháng).",
     Feature.ZALO_PUSH:        "Nhận thông báo Zalo hàng tuần cần gói Pro (99k/tháng).",
     Feature.CSV_EXPORT:       "Xuất dữ liệu CSV cần gói Pro (99k/tháng).",
-    Feature.SHOPEE_LAZADA:    "Import dữ liệu Shopee cần gói Business (299k/tháng). Lazada đang được phát triển.",
+    Feature.SHOPEE_LAZADA:    "Import dữ liệu Shopee/Lazada không khả dụng ở gói này.",
     Feature.CREATOR_CRM:      "Creator CRM cần gói Pro (99k/tháng).",
     Feature.BENCHMARKS:       "Benchmark ngành cần gói Pro (99k/tháng).",
 }

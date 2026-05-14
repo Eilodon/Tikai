@@ -396,6 +396,11 @@ async def process_import(ctx: dict, session_id: str) -> None:
                     db.add(ai_action)
 
             await db.flush()
+            # P0-1 fix: store top 5 SKUs for post-import COGS prompt
+            session.top_skus_for_cogs = [
+                {"sku_id": s.sku_id, "sku_name": s.sku_name, "gmv": str(s.gmv)}
+                for s in insight_data.top_skus[:5]
+            ]
             session.status = "completed"
             await db.flush()
             await db.commit()

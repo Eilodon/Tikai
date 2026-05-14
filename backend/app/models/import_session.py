@@ -54,6 +54,10 @@ class ImportSession(Base, TimestampMixin):
     # AI rescue message — populated khi Parser detect issues
     ai_rescue_message: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # P0-1 fix: top 5 SKUs by GMV for post-import COGS prompt
+    # shape: [{"sku_id": "...", "sku_name": "...", "gmv": "..."}]
+    top_skus_for_cogs: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     # Relationships
     shop: Mapped[Shop] = relationship(back_populates="import_sessions")  # noqa: F821
     orders: Mapped[list[Order]] = relationship(back_populates="import_session")  # noqa: F821

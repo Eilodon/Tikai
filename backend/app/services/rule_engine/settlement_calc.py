@@ -48,10 +48,13 @@ def calculate_settlement_forecast(
 
         days_since_order = (ref - row.order_date).days
 
+        if days_since_order < 0:
+            continue  # future-dated order — skip silently to avoid corrupting forecast
+
         if days_since_order >= SETTLEMENT_DAYS:
             # Already within settlement window — should be settled
             settled += nr
-        elif days_since_order >= 0:
+        else:
             # Order placed, settlement pending
             pending += nr
             # Will it settle within 14 days from today?

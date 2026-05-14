@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # Email (SendGrid — optional, digest disabled if not set)
     sendgrid_api_key: str = ""
-    email_from_address: str = "digest@tikai.vn"
+    email_from_address: str = "digest@tikai.vn"   # override via EMAIL_FROM_ADDRESS env var
     email_from_name: str = "Tikai"
     # v2.0.1: app_base_url used for email CTA links — never hardcode tikai.vn in code
     # Default is production URL; override with staging URL in staging env
@@ -75,6 +75,19 @@ class Settings(BaseSettings):
             raise ValueError(
                 "SENTRY_DSN is required when ENVIRONMENT=production. "
                 "Set SENTRY_DSN env var or set ENVIRONMENT=development for local dev."
+            )
+        return v
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def require_ssl_in_production(cls, v: str, info: "FieldValidationInfo") -> str:
+        """Fail fast if database_url lacks SSL in production.
+        Unencrypted PostgreSQL over the network is unacceptable for production data."""
+        env = info.data.get("environment", "development")
+        if env == "production" and "sslmode" not in v and "ssl=true" not in v:
+            raise ValueError(
+                "DATABASE_URL must include SSL for production (e.g. ?sslmode=require). "
+                "Add sslmode=require to your Railway DATABASE_URL."
             )
         return v
 

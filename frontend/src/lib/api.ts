@@ -19,9 +19,9 @@ class ApiError extends Error {
 
 async function request<T>(
   path: string,
-  options: RequestInit & { token?: string } = {},
+  options: RequestInit & { token?: string; _retried?: boolean } = {},
 ): Promise<T> {
-  const { token, ...init } = options
+  const { token, _retried, ...init } = options
 
   // FIX P0-2: Never override Content-Type when body is FormData.
   // The browser must set multipart/form-data with the correct boundary= string automatically.
@@ -37,6 +37,17 @@ async function request<T>(
       ...init.headers,
     },
   })
+
+  // 401 interceptor: refresh Supabase session and retry once
+  if (res.status === 401 && !_retried) {
+    const { createClient } = await import("@/lib/supabase")
+    const supabase = createClient()
+    const { data } = await supabase.auth.refreshSession()
+    const newToken = data.session?.access_token
+    if (newToken) {
+      return request<T>(path, { ...options, token: newToken, _retried: true })
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))

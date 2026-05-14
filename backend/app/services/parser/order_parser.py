@@ -124,12 +124,14 @@ def _determine_mode(col_map: dict[str, str]) -> CanContinueMode:
 
 
 def _parse_quantity(raw: str) -> int:
-    """FIX BUG-NH1: handle Excel float-strings like '2.0' — '2.0'.isdigit() is False."""
+    """FIX BUG-NH1: handle Excel float-strings like '2.0' — '2.0'.isdigit() is False.
+    Uses Decimal intermediate to avoid float imprecision on large integers."""
     if not raw:
         return 1
     try:
-        return max(1, int(float(raw)))
-    except (ValueError, TypeError):
+        from decimal import Decimal, InvalidOperation
+        return max(1, int(Decimal(raw.split(".")[0] if "." in raw else raw)))
+    except (ValueError, TypeError, InvalidOperation):
         return 1
 
 

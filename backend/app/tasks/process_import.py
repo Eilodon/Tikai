@@ -22,6 +22,7 @@ FIXES (cumulative through v1.0.0):
   IMPACT: Without this, all Shopee orders were stored with platform="tiktok" (server_default),
   breaking per-platform P&L queries and the ix_orders_shop_id_platform index.
 """
+import asyncio
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -298,7 +299,12 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 is_net_revenue_mode=insight_data.is_net_revenue_mode,
                 cogs_coverage_pct=insight_data.cogs_coverage_pct,
             )
-            await run_aha_narrator(aha_input, str(session.shop_id), str(snapshot.id))
+            # Aha Narrator is non-critical — a failure must not abort the import.
+            try:
+                await run_aha_narrator(aha_input, str(session.shop_id), str(snapshot.id))
+            except Exception as aha_err:
+                log.warning("process_import.aha_narrator_failed",
+                            session_id=session_id, error=str(aha_err))
 
             # F-1B-06: explicit tier-based AI call limits (replaces opaque * 5 multiplier)
             _tier = getattr(shop, "subscription_tier", "free") or "free"
@@ -308,39 +314,50 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 "business": settings.ai_max_calls_per_import_business,
             }
             ai_limit = _tier_limits.get(_tier, settings.ai_max_calls_per_import_free)
-            # 11. Run Action Coach per trigger
+            # 11. Run Action Coach — parallel calls via asyncio.gather() for latency
             triggers = insight_data.action_triggers[:ai_limit]
-            for trigger in triggers:
-                action_input = ActionCoachInput(
-                    rule_id=trigger.rule_id,
-                    entity_id=trigger.entity_id,
-                    entity_name=trigger.entity_name,
-                    metric_key=trigger.metric_key,
-                    metric_value=trigger.metric_value,
-                    metric_label=_metric_label(trigger.metric_key),
-                    context_json={"rule_id": trigger.rule_id, "entity_type": trigger.entity_type, "priority": trigger.priority},
-                )
-                action_output = await run_action_coach(
-                    action_input, str(session.shop_id), str(snapshot.id)
-                )
-                ai_action = AIAction(
-                    shop_id=session.shop_id,
-                    insight_snapshot_id=snapshot.id,
-                    action_type=_rule_to_action_type(trigger.rule_id),
-                    rule_trigger=trigger.rule_id,
-                    title=action_output.action_title,
-                    why=action_output.why_it_matters,
-                    do_today=action_output.recommended_step,
-                    expected_impact=action_output.risk_warning or "Cải thiện margin",
-                    confidence=action_output.confidence,
-                    source_insight_json={
-                        "trigger": trigger.rule_id,
-                        "entity": trigger.entity_id,
-                        "metric_key": trigger.metric_key,
-                        "metric_value": str(trigger.metric_value),
-                    },
-                )
-                db.add(ai_action)
+
+            async def _run_single_coach(trigger) -> AIAction | None:
+                try:
+                    action_input = ActionCoachInput(
+                        rule_id=trigger.rule_id,
+                        entity_id=trigger.entity_id,
+                        entity_name=trigger.entity_name,
+                        metric_key=trigger.metric_key,
+                        metric_value=trigger.metric_value,
+                        metric_label=_metric_label(trigger.metric_key),
+                        context_json={"rule_id": trigger.rule_id, "entity_type": trigger.entity_type, "priority": trigger.priority},
+                    )
+                    action_output = await run_action_coach(
+                        action_input, str(session.shop_id), str(snapshot.id)
+                    )
+                    return AIAction(
+                        shop_id=session.shop_id,
+                        insight_snapshot_id=snapshot.id,
+                        action_type=_rule_to_action_type(trigger.rule_id),
+                        rule_trigger=trigger.rule_id,
+                        title=action_output.action_title,
+                        why=action_output.why_it_matters,
+                        do_today=action_output.recommended_step,
+                        expected_impact=action_output.risk_warning or "Cải thiện margin",
+                        confidence=action_output.confidence,
+                        source_insight_json={
+                            "trigger": trigger.rule_id,
+                            "entity": trigger.entity_id,
+                            "metric_key": trigger.metric_key,
+                            "metric_value": str(trigger.metric_value),
+                        },
+                    )
+                except Exception as coach_err:
+                    log.warning("process_import.action_coach_failed",
+                                session_id=session_id, rule_id=trigger.rule_id,
+                                error=str(coach_err))
+                    return None
+
+            coach_results = await asyncio.gather(*[_run_single_coach(t) for t in triggers])
+            for ai_action in coach_results:
+                if ai_action is not None:
+                    db.add(ai_action)
 
             await db.flush()
             session.status = "completed"

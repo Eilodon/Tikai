@@ -1,10 +1,17 @@
 "use client"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+
+function getSafeRedirect(raw: string | null): string {
+  // Only allow internal relative paths — reject external URLs to prevent open redirect.
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/overview"
+  return raw
+}
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -23,7 +30,7 @@ export default function LoginPage() {
           : await supabase.auth.signUp({ email, password })
 
       if (authError) throw authError
-      router.push("/overview")
+      router.push(getSafeRedirect(searchParams.get("redirect")))
     } catch (err: any) {
       setError(err?.message ?? "Đã xảy ra lỗi. Vui lòng thử lại.")
     } finally {

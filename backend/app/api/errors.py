@@ -11,6 +11,15 @@ from fastapi.responses import ORJSONResponse
 log = structlog.get_logger()
 
 
+def _capture_sentry(exc: Exception) -> None:
+    """Send exception to Sentry if SDK is initialized — no-op otherwise."""
+    try:
+        import sentry_sdk
+        sentry_sdk.capture_exception(exc)
+    except Exception:
+        pass
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(
@@ -34,6 +43,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> ORJSONResponse:
         # F-03: log full error internally, return safe Vietnamese message to client
         log.error("api.value_error", path=request.url.path, error=str(exc))
+        _capture_sentry(exc)
         _SAFE_MESSAGES: dict[str, str] = {
             "AI budget exceeded":  "Đã đạt giới hạn phân tích AI tháng này. Liên hệ hỗ trợ nếu cần.",
             "AI call failed":      "Tính năng AI tạm thời không khả dụng. Vui lòng thử lại sau.",
@@ -58,6 +68,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: Exception
     ) -> ORJSONResponse:
         log.exception("api.unhandled_exception", path=request.url.path, error=str(exc))
+        _capture_sentry(exc)
         return ORJSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={

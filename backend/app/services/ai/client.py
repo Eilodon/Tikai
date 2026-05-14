@@ -162,16 +162,22 @@ OUTPUT SCHEMA (return ONLY valid JSON matching this schema, no other text):
 
 async def _check_budget(shop_id: str) -> None:
     """Pre-call optimistic budget check (non-atomic first gate).
-    Atomic enforcement happens in _record_cost via Lua script."""
-    from app.core.redis import get_redis
-    key = f"ai_cost_monthly_v2:{shop_id}"
-    r = await get_redis()
-    raw = await r.hget(key, "total_usd")
-    if raw:
-        spent = Decimal(str(raw))
-        if spent >= settings.ai_budget_limit:
-            log.warning("ai.budget_exceeded", shop_id=shop_id, spent=str(spent), limit=str(settings.ai_budget_limit))
-            raise ValueError(f"AI budget exceeded for shop {shop_id}")
+    Atomic enforcement happens in _record_cost via Lua script.
+    Fail-open: if Redis is unavailable, allow the call (cost tracked post-call)."""
+    try:
+        from app.core.redis import get_redis
+        key = f"ai_cost_monthly_v2:{shop_id}"
+        r = await get_redis()
+        raw = await r.hget(key, "total_usd")
+        if raw:
+            spent = Decimal(str(raw))
+            if spent >= settings.ai_budget_limit:
+                log.warning("ai.budget_exceeded", shop_id=shop_id, spent=str(spent), limit=str(settings.ai_budget_limit))
+                raise ValueError(f"AI budget exceeded for shop {shop_id}")
+    except ValueError:
+        raise  # budget exceeded — re-raise
+    except Exception as e:
+        log.warning("ai.budget_check_redis_unavailable", shop_id=shop_id, error=str(e))
 
 
 async def _record_cost(shop_id: str, function_name: str, cost_usd: Decimal) -> None:
@@ -186,19 +192,24 @@ async def _record_cost(shop_id: str, function_name: str, cost_usd: Decimal) -> N
     ttl = (days_in_month - now.day + 1) * 86400
 
     key = f"ai_cost_monthly_v2:{shop_id}"
-    r = await get_redis()
-    new_total_raw = await r.eval(
-        _RECORD_COST_LUA, 1, key,
-        str(float(cost_usd)),
-        f"calls:{function_name}",
-        str(ttl),
-    )
-    # Post-call check: if we narrowly exceeded budget, log for monitoring
-    new_total = Decimal(str(new_total_raw))
-    if new_total > settings.ai_budget_limit:
-        log.warning(
-            "ai.budget_exceeded_post_call",
-            shop_id=shop_id,
-            new_total=str(new_total),
-            limit=str(settings.ai_budget_limit),
+    try:
+        r = await get_redis()
+        new_total_raw = await r.eval(
+            _RECORD_COST_LUA, 1, key,
+            str(float(cost_usd)),
+            f"calls:{function_name}",
+            str(ttl),
         )
+        # Post-call check: if we narrowly exceeded budget, log for monitoring
+        new_total = Decimal(str(new_total_raw))
+        if new_total > settings.ai_budget_limit:
+            log.warning(
+                "ai.budget_exceeded_post_call",
+                shop_id=shop_id,
+                new_total=str(new_total),
+                limit=str(settings.ai_budget_limit),
+            )
+    except Exception as e:
+        # Fail-open: cost recording failure must never crash the import pipeline.
+        log.error("ai.cost_record_failed", shop_id=shop_id, function_name=function_name,
+                  cost_usd=str(cost_usd), error=str(e))

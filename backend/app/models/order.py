@@ -88,4 +88,5 @@ class Order(Base, TimestampMixin):
         Index("ix_orders_shop_id_creator_id", "shop_id", "creator_id"),
         Index("ix_orders_tiktok_order_id", "tiktok_order_id"),
         Index("ix_orders_shop_id_platform", "shop_id", "platform"),
+        Index("ix_orders_shop_id_sku_name", "shop_id", "sku_name"),
     )

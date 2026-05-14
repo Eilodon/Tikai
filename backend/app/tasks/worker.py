@@ -20,7 +20,7 @@ log = structlog.get_logger()
 
 
 async def startup(ctx: dict) -> None:
-    engine = create_async_engine(settings.database_url, pool_size=5, max_overflow=10)
+    engine = create_async_engine(settings.database_url, pool_size=10, max_overflow=15)
     ctx["db_session_factory"] = async_sessionmaker(
         bind=engine, expire_on_commit=False, autoflush=False
     )
@@ -28,6 +28,14 @@ async def startup(ctx: dict) -> None:
 
 
 async def shutdown(ctx: dict) -> None:
+    engine = ctx.get("db_session_factory")
+    if engine and hasattr(engine, "kw"):
+        try:
+            bind = engine.kw.get("bind")
+            if bind:
+                await bind.dispose()
+        except Exception:
+            pass
     log.info("arq.worker.shutdown")
 
 
@@ -45,19 +53,41 @@ async def run_weekly_receipts(ctx: dict) -> None:
 
     AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
     async with AsyncSessionLocal() as db:
-        shops = await db.scalars(select(Shop).where(Shop.is_active == True))  # noqa: E712
+        shops = list(await db.scalars(select(Shop).where(Shop.is_active == True)))  # noqa: E712
         total = skipped = 0
+
+        if not shops:
+            log.info("weekly_receipts.no_active_shops")
+            return
+
+        # FIX N+1: batch-load all completed actions for all active shops in 1 query
+        week_ago = datetime.now(UTC) - timedelta(days=7)
+        shop_ids = [s.id for s in shops]
+        all_actions = list(await db.scalars(
+            select(AIAction).where(
+                AIAction.shop_id.in_(shop_ids),
+                AIAction.status == "done",
+                AIAction.completed_at >= week_ago,
+            )
+        ))
+        actions_by_shop: dict = {}
+        for a in all_actions:
+            actions_by_shop.setdefault(a.shop_id, []).append(a)
+
+        # FIX N+1: batch-load existing receipts for this week to avoid 1 query per shop
+        vn_now = datetime.now(UTC) + timedelta(hours=7)
+        iso_year, iso_week, _ = vn_now.isocalendar()
+        week_label = f"tuần {iso_week}/{iso_year}"
+        existing_receipts = set(await db.scalars(
+            select(WeeklyReceipt.shop_id).where(
+                WeeklyReceipt.shop_id.in_(shop_ids),
+                WeeklyReceipt.period_label == week_label,
+            )
+        ))
 
         for shop in shops:
             try:
-                week_ago = datetime.now(UTC) - timedelta(days=7)
-                actions = list(await db.scalars(
-                    select(AIAction).where(
-                        AIAction.shop_id == shop.id,
-                        AIAction.status == "done",
-                        AIAction.completed_at >= week_ago,
-                    )
-                ))
+                actions = actions_by_shop.get(shop.id, [])
                 if not actions:
                     skipped += 1
                     continue
@@ -93,19 +123,8 @@ async def run_weekly_receipts(ctx: dict) -> None:
                     elif rule == "creator_roi_below_one":
                         pass  # mv is ratio not money — skip estimation
 
-                # FIX BUG-NM2 (v2): VN timezone ISO week boundary
-                vn_now = datetime.now(UTC) + timedelta(hours=7)
-                iso_year, iso_week, _ = vn_now.isocalendar()
-                week_label = f"tuần {iso_week}/{iso_year}"
-
-                # Idempotency check
-                existing_receipt = await db.scalar(
-                    select(WeeklyReceipt).where(
-                        WeeklyReceipt.shop_id == shop.id,
-                        WeeklyReceipt.period_label == week_label,
-                    )
-                )
-                if existing_receipt:
+                # Idempotency check (uses pre-loaded set — no extra query)
+                if shop.id in existing_receipts:
                     skipped += 1
                     continue
 

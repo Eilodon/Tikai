@@ -5,6 +5,7 @@ LOW-3: Rate limiting via slowapi.
 LOW-6: /healthz and /readyz endpoints for Docker + k8s health probes.
 v1.0.0: Version string updated from hardcoded "0.4.0" to "1.0.0".
 """
+
 from contextlib import asynccontextmanager
 
 import structlog
@@ -23,7 +24,7 @@ from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
 from app.core.storage import close_client as close_storage_client
 
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 
 settings = get_settings()
 configure_logging()
@@ -37,6 +38,7 @@ def _init_sentry() -> None:
     import sentry_sdk
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
         environment=settings.environment,
@@ -47,12 +49,47 @@ def _init_sentry() -> None:
     log.info("sentry.initialized")
 
 
+async def _startup_checks() -> None:
+    """ADR-FIN-002 + ADR-AI-003: log operator-critical state at startup.
+
+    Fee config: a missing Shopee config at import time causes silent fallback to TikTok
+    rates → wrong P&L for all Shopee sellers. Log CRITICAL so ops catches it before sellers.
+
+    AI models: log which model strings are active so deprecation is visible in startup logs
+    without making a live Anthropic call (avoids blocking startup on network issues).
+    """
+    from sqlalchemy import text as sa_text
+
+    from app.core.database import AsyncSessionLocal
+    from app.services.ai.client import MODEL_SMALL, MODEL_STANDARD
+
+    log.info("ai.models_active", standard=MODEL_STANDARD, small=MODEL_SMALL)
+
+    try:
+        async with AsyncSessionLocal() as db:
+            count = await db.scalar(
+                sa_text("SELECT COUNT(*) FROM fee_configs WHERE platform = 'shopee'")
+            )
+            if not count:
+                log.critical(
+                    "startup.fee_config_missing",
+                    platform="shopee",
+                    detail="No Shopee fee config found — Shopee imports will use TikTok rates (wrong P&L)",
+                )
+            else:
+                log.info("startup.fee_config_ok", platform="shopee", count=count)
+    except Exception as e:
+        log.warning("startup.fee_config_check_failed", error=str(e))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _init_sentry()
     log.info("tikai.startup", environment=settings.environment, version=APP_VERSION)
+    await _startup_checks()
     yield
     from app.core.arq_pool import close_arq_pool
+
     await close_arq_pool()
     await engine.dispose()
     await close_storage_client()
@@ -86,15 +123,16 @@ register_exception_handlers(app)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-app.include_router(shops.router,           prefix="/v1", tags=["shops"])
-app.include_router(imports.router,         prefix="/v1", tags=["imports"])
-app.include_router(insights.router,        prefix="/v1", tags=["insights"])
-app.include_router(actions.router,         prefix="/v1", tags=["actions"])
-app.include_router(cogs.router,            prefix="/v1", tags=["cogs"])
+app.include_router(shops.router, prefix="/v1", tags=["shops"])
+app.include_router(imports.router, prefix="/v1", tags=["imports"])
+app.include_router(insights.router, prefix="/v1", tags=["insights"])
+app.include_router(actions.router, prefix="/v1", tags=["actions"])
+app.include_router(cogs.router, prefix="/v1", tags=["cogs"])
 app.include_router(weekly_receipts.router, prefix="/v1", tags=["weekly-receipts"])
-app.include_router(livestream.router,       prefix="/v1", tags=["livestream"])
+app.include_router(livestream.router, prefix="/v1", tags=["livestream"])
 
 # ── Health Endpoints ──────────────────────────────────────────────────────────
+
 
 @app.get("/healthz", tags=["ops"], include_in_schema=False)
 async def healthz():
@@ -134,10 +172,8 @@ async def readyz():
 
 @app.get("/health", tags=["ops"], include_in_schema=False)
 async def health():
-    """Legacy health endpoint — kept for backward compat. Prefer /healthz."""
-    return {
-        "status": "ok",
-        "version": APP_VERSION,
-        "rule_engine": settings.rule_engine_version,
-        "environment": settings.environment,
-    }
+    """Legacy health endpoint — kept for backward compat. Prefer /healthz.
+    ADR-SEC-006: removed 'environment' and 'rule_engine' fields — no auth required
+    on this endpoint so exposing them helps attackers fingerprint the stack.
+    """
+    return {"status": "ok", "version": APP_VERSION}

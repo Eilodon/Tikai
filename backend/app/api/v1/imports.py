@@ -85,21 +85,27 @@ async def upload_import(
                                "message": "Chỉ chấp nhận file CSV hoặc Excel từ TikTok Shop."}}
         )
 
-    # Read file — enforce size limit
-    file_bytes = await file.read()
+    # F-C1-02: Read file with size limit check (streaming, not full buffer)
+    # Read in 5MB chunks; reject if total exceeds limit before full load
+    file_bytes = b""
+    chunk_size = 5 * 1024 * 1024  # 5MB chunks
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        file_bytes += chunk
+        if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": {"code": "FILE_TOO_LARGE",
+                                   "message": "File quá lớn. Vui lòng xuất file theo từng tuần (tối đa 50MB)."}}
+            )
     file_size_bytes = len(file_bytes)
-    if file_size_bytes > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail={"error": {"code": "FILE_TOO_LARGE",
-                               "message": "File quá lớn. Vui lòng xuất file theo từng tuần (tối đa 50MB)."}}
-        )
 
-    # v2.0.0: Quick platform detection from headers — no full parse needed
-    # Only reads first row for header extraction (fast, <1ms)
-    # BUG-5 FIX: xlsx files with unknown detection could be Shopee — require gate
-    # to prevent Free/Pro users bypassing the Business-tier guard via malformed headers.
-    _detected_platform = _quick_detect_platform(file_bytes, ext)
+    # ADR-SEC-003: _quick_detect_platform calls pd.read_excel (sync) for xlsx.
+    # Even with nrows=0 it blocks the event loop while openpyxl opens the zip archive.
+    # Use asyncio.to_thread so uvicorn workers stay unblocked during detection.
+    _detected_platform = await asyncio.to_thread(_quick_detect_platform, file_bytes, ext)
     if _detected_platform == "shopee" or (
         _detected_platform == "unknown" and ext in {".xlsx", ".xls"}
     ):

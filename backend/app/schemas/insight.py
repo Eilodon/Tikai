@@ -10,6 +10,7 @@ from app.schemas import ConfidenceLevel, MoneyVND
 
 class LeakItem(BaseModel):
     """A detected revenue leak. estimated_loss ALWAYS from Rule Engine — never AI."""
+
     type: Literal["sku", "creator", "category"]
     id: str
     name: str
@@ -34,24 +35,27 @@ class LeakItem(BaseModel):
 
 class ActionTrigger(BaseModel):
     """Rule Engine trigger — input for Action Coach AI function."""
+
     rule_id: str
     entity_type: Literal["sku", "creator", "shop"]
     entity_id: str
     entity_name: str
-    metric_key: str    # key in source data, used for fact-anchoring
+    metric_key: str  # key in source data, used for fact-anchoring
     metric_value: MoneyVND
-    priority: int      # 1 = highest priority
+    priority: int  # 1 = highest priority
 
 
 class SKUSummaryItem(BaseModel):
     """Top SKU summary for frontend display."""
+
     sku_id: str
     sku_name: str
     gmv: MoneyVND
     net_revenue: MoneyVND
     order_count: int
     refund_rate: Decimal  # 0-1
-    margin_pct: Decimal | None  # None if COGS missing
+    margin_pct: Decimal | None  # None if COGS missing — ratio relative to GMV
+    margin: Decimal | None = None  # absolute VND (net_revenue - COGS); None if COGS missing
     gmv_rank: int
 
 
@@ -61,6 +65,7 @@ class CreatorSummaryItem(BaseModel):
     NOTE: BUG-NC1 must be fixed in process_import.py BEFORE deploying this fix,
     otherwise existing snapshots will fail deserialization.
     """
+
     creator_id: str
     creator_name: str
     attributed_gmv: MoneyVND
@@ -89,7 +94,7 @@ class InsightSnapshotResponse(BaseModel):
 
     top_leaks: list[LeakItem]
     top_skus: list[SKUSummaryItem]
-    top_creators: list[CreatorSummaryItem]   # FIX BUG-C2: was missing, creator table always empty
+    top_creators: list[CreatorSummaryItem]  # FIX BUG-C2: was missing, creator table always empty
     action_triggers: list[ActionTrigger]
 
     rule_engine_version: str

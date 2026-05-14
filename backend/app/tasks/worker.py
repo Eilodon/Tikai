@@ -20,7 +20,16 @@ log = structlog.get_logger()
 
 
 async def startup(ctx: dict) -> None:
-    engine = create_async_engine(settings.database_url, pool_size=10, max_overflow=15)
+    # ADR-ARCH-004: reduced pool size — worker is a single process so 5+5=10 connections
+    # is sufficient and leaves headroom for 2 API replicas (5+10 each = 30 total vs
+    # Supabase Pro limit of 100 or free limit of 15).
+    engine = create_async_engine(
+        settings.database_url, pool_size=5, max_overflow=5, pool_pre_ping=True
+    )
+    # ADR-ARCH-005: store engine explicitly so shutdown() can dispose it cleanly.
+    # async_sessionmaker has no public .kw attribute in SQLAlchemy 2.x — accessing
+    # session_factory.kw raises AttributeError and the engine leaks on shutdown.
+    ctx["db_engine"] = engine
     ctx["db_session_factory"] = async_sessionmaker(
         bind=engine, expire_on_commit=False, autoflush=False
     )
@@ -28,19 +37,26 @@ async def startup(ctx: dict) -> None:
 
 
 async def shutdown(ctx: dict) -> None:
-    engine = ctx.get("db_session_factory")
-    if engine and hasattr(engine, "kw"):
-        try:
-            bind = engine.kw.get("bind")
-            if bind:
-                await bind.dispose()
-        except Exception:
-            pass
+    # ADR-ARCH-005: dispose the engine directly (was broken — used engine.kw which
+    # doesn't exist on async_sessionmaker in SQLAlchemy 2.x).
+    engine = ctx.get("db_engine")
+    if engine:
+        await engine.dispose()
     log.info("arq.worker.shutdown")
 
 
 async def run_weekly_receipts(ctx: dict) -> None:
-    """Weekly batch — Monday 8AM VN (1AM UTC)."""
+    """Weekly batch — Monday 8AM VN (1AM UTC).
+
+    ADR-ARCH-001: job_timeout=300s. At ~8-10s/shop (AI call + DB), a batch of 30
+    shops = ~270s which fits within the limit. Without this cap a SIGKILL at shop N
+    silently skips shops N+1…end — sellers wait 7 days for their next receipt.
+    Long-term: convert to per-shop jobs enqueued by a lightweight trigger cron.
+    """
+    # ADR-ARCH-001: cap per run to avoid job_timeout SIGKILL dropping shops silently.
+    # 30 shops × ~8s = ~240s, safely under 300s timeout with margin for slower AI calls.
+    MAX_SHOPS_PER_RUN = 30
+
     from decimal import Decimal
 
     from sqlalchemy import select
@@ -53,7 +69,11 @@ async def run_weekly_receipts(ctx: dict) -> None:
 
     AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
     async with AsyncSessionLocal() as db:
-        shops = list(await db.scalars(select(Shop).where(Shop.is_active == True)))  # noqa: E712
+        shops = list(
+            await db.scalars(
+                select(Shop).where(Shop.is_active == True).limit(MAX_SHOPS_PER_RUN)  # noqa: E712
+            )
+        )
         total = skipped = 0
 
         if not shops:
@@ -196,21 +216,38 @@ async def run_weekly_receipts(ctx: dict) -> None:
 
 
 async def cleanup_stuck_imports(ctx: dict) -> None:
-    """F-08: Mark import sessions stuck in 'processing' > 10 min as failed.
-    ARQ job_timeout=300s kills the worker process — Python except handler doesn't run
-    → session stays 'processing' forever. This cron job fixes them hourly.
+    """F-08: Mark import sessions stuck in 'processing' or 'pending' > threshold as failed.
+
+    Two stuck cases:
+    1. status='processing' > 10min: job was SIGKILL'd AFTER the status commit landed.
+    2. status='pending' > 20min: job was SIGKILL'd BEFORE the status commit (race window),
+       OR the ARQ enqueue succeeded but the worker never picked it up (Redis issue).
+    ADR-ARCH-002: case 2 is rare post-fix (process_import now commits before heavy work)
+    but kept as defense-in-depth for edge cases and legacy sessions.
     """
-    from sqlalchemy import update as sa_update
+    from sqlalchemy import or_, update as sa_update
     from app.models.import_session import ImportSession
 
     AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
     async with AsyncSessionLocal() as db:
-        cutoff = datetime.now(UTC) - timedelta(minutes=10)
+        processing_cutoff = datetime.now(UTC) - timedelta(minutes=10)
+        pending_cutoff = datetime.now(UTC) - timedelta(minutes=20)
+
         result = await db.execute(
             sa_update(ImportSession)
             .where(
-                ImportSession.status == "processing",
-                ImportSession.updated_at < cutoff,
+                or_(
+                    # Case 1: stuck in processing (SIGKILL after commit)
+                    (
+                        (ImportSession.status == "processing")
+                        & (ImportSession.updated_at < processing_cutoff)
+                    ),
+                    # Case 2: stuck in pending (SIGKILL before commit, or worker never picked up)
+                    (
+                        (ImportSession.status == "pending")
+                        & (ImportSession.updated_at < pending_cutoff)
+                    ),
+                )
             )
             .values(
                 status="failed",

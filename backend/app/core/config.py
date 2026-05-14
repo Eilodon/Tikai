@@ -68,12 +68,13 @@ class Settings(BaseSettings):
     @field_validator("sentry_dsn", mode="after")
     @classmethod
     def require_sentry_in_production(cls, v: str, info: "FieldValidationInfo") -> str:
-        """LOW-4: Fail fast if Sentry DSN missing in production.
-        Without this, errors are swallowed silently when SENTRY_DSN is forgotten."""
+        """LOW-4: Fail fast if Sentry DSN missing in production or staging.
+        Without this, errors are swallowed silently when SENTRY_DSN is forgotten.
+        F-C1-01: Extended to staging to enforce observability before production."""
         env = info.data.get("environment", "development")
-        if env == "production" and not v:
+        if env in ("production", "staging") and not v:
             raise ValueError(
-                "SENTRY_DSN is required when ENVIRONMENT=production. "
+                f"SENTRY_DSN is required when ENVIRONMENT={env}. "
                 "Set SENTRY_DSN env var or set ENVIRONMENT=development for local dev."
             )
         return v
@@ -81,12 +82,13 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="after")
     @classmethod
     def require_ssl_in_production(cls, v: str, info: "FieldValidationInfo") -> str:
-        """Fail fast if database_url lacks SSL in production.
-        Unencrypted PostgreSQL over the network is unacceptable for production data."""
+        """Fail fast if database_url lacks SSL in production or staging.
+        Unencrypted PostgreSQL over the network is unacceptable for production data.
+        F-C1-01: Extended to staging to enforce security before production."""
         env = info.data.get("environment", "development")
-        if env == "production" and "sslmode" not in v and "ssl=true" not in v:
+        if env in ("production", "staging") and "sslmode" not in v and "ssl=true" not in v:
             raise ValueError(
-                "DATABASE_URL must include SSL for production (e.g. ?sslmode=require). "
+                f"DATABASE_URL must include SSL for {env} (e.g. ?sslmode=require). "
                 "Add sslmode=require to your Railway DATABASE_URL."
             )
         return v

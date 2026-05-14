@@ -23,7 +23,7 @@ from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
 from app.core.storage import close_client as close_storage_client
 
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 
 settings = get_settings()
 configure_logging()

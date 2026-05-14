@@ -22,6 +22,8 @@ def _get_real_ip(request: Request) -> str:
     return (request.client.host if request.client else None) or "unknown"
 
 
-# Per-IP rate limiter — for per-shop limiting, individual route decorators
-# extract shop_id from JWT after auth dependency
+# F-C1-04: Per-IP rate limiter (shared NAT trade-off accepted for now)
+# Individual routers can override with shop_id-based limits if needed.
+# DESIGN: Per-IP avoids complex Redis key management; per-shop requires
+# auth + lookup on every request. Post-launch optimization if abuse detected.
 limiter = Limiter(key_func=_get_real_ip, default_limits=["200/minute"])

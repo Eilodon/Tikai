@@ -193,7 +193,10 @@ def _sanitize_recursive(obj: object) -> object:
 
 
 def _sanitize_field(key: str, value: object) -> object:
-    normalized_key = key.lower().replace(" ", "_").replace("-", "_")
+    # Normalize: spaces/hyphens to underscores, camelCase to snake_case, lowercase
+    # e.g. "buyerName" → "buyer_name", "Buyer-Name" → "buyer_name"
+    normalized_key = re.sub(r"([a-z])([A-Z])", r"\1_\2", key)  # camelCase split
+    normalized_key = normalized_key.lower().replace(" ", "_").replace("-", "_")
     if normalized_key in PII_FIELD_NAMES:
         return "***"
     if isinstance(value, str) and detect_injection(value):

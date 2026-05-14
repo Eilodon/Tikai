@@ -96,8 +96,8 @@ def build_insight(
     # 1. Fee config
     rows_with_fees, discrepancy_notes = apply_fee_config(rows, fee_config)
 
-    # 2. SKU summaries
-    sku_summaries = calculate_sku_summaries(rows_with_fees, cogs_map)
+    # 2. SKU summaries (pass category_baselines for health score computation)
+    sku_summaries = calculate_sku_summaries(rows_with_fees, cogs_map, category_baselines)
     top_skus = [s for s in sku_summaries if s.gmv_rank <= 20]
 
     # 3. Creator summaries

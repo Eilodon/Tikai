@@ -12,6 +12,9 @@ import {
 import { PLSummary } from "@/components/insights/PLSummary"
 import { LeakList } from "@/components/insights/LeakList"
 import { SKUTable } from "@/components/insights/SKUTable"
+import { CreatorTable } from "@/components/insights/CreatorTable"
+import { CashFlowTimeline } from "@/components/insights/CashFlowTimeline"
+import { IndustryBenchmark } from "@/components/insights/IndustryBenchmark"
 import { ActionCard } from "@/components/actions/ActionCard"
 import { WeeklyReceipt } from "@/components/receipt/WeeklyReceipt"
 import { SkeletonCard } from "@/components/common/MoneyDisplay"
@@ -140,6 +143,12 @@ export default function OverviewPage() {
       )}
 
       <SKUTable insight={insight} />
+
+      <CreatorTable insight={insight} />
+
+      <CashFlowTimeline insight={insight} />
+
+      <IndustryBenchmark snapshotId={insight.id} />
 
       {/* Re-analysis — Pro+ only */}
       {isPro ? (

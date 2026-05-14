@@ -13,6 +13,7 @@ Both destroy trust in the Weekly Receipt when sellers notice the numbers don't a
 Fix: each rule_id maps to a specific metric to check in top_skus_json or
 top_creators_json, and compares THAT entity's metric before vs after.
 """
+
 import uuid
 from decimal import Decimal
 
@@ -33,11 +34,15 @@ log = structlog.get_logger()
 #   - "voucher_exceeds_margin": evaluate_rules() never produces this rule_id
 #   (Add them here only when also added to action_rules.py evaluate_rules())
 RULE_METRIC_MAP: dict[str, tuple[str, str]] = {
-    "sku_margin_negative":   ("sku",     "margin_pct"),
-    "sku_refund_spike":      ("sku",     "refund_rate"),
+    # ADR-FIN-001: "margin" is absolute VND (net_revenue - COGS); matches metric_key in
+    # action_rules.py evaluate_rules() and top_skus_json serialization.
+    # "margin_pct" is a ratio (0.04 = 4%) — storing it in confirmed_delta showed "0.07₫"
+    # in Weekly Receipt because the field is treated as VND by the serializer.
+    "sku_margin_negative": ("sku", "margin"),
+    "sku_refund_spike": ("sku", "refund_rate"),
     "creator_roi_below_one": ("creator", "revenue_efficiency"),
     # Planned but not yet implemented in evaluate_rules() — add both places together:
-    # "voucher_exceeds_margin":    ("sku",     "margin_pct"),
+    # "voucher_exceeds_margin":    ("sku",     "margin"),
     # "creator_sample_no_content": ("creator", "sample_conversion_rate"),
 }
 
@@ -67,9 +72,7 @@ async def verify_action_impact(ctx: dict, action_id: str) -> None:
     AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
 
     async with AsyncSessionLocal() as db:
-        action = await db.scalar(
-            select(AIAction).where(AIAction.id == uuid.UUID(action_id))
-        )
+        action = await db.scalar(select(AIAction).where(AIAction.id == uuid.UUID(action_id)))
         if not action or action.status != "done":
             return
 
@@ -91,9 +94,7 @@ async def verify_action_impact(ctx: dict, action_id: str) -> None:
             return
 
         baseline_snapshot = await db.scalar(
-            select(InsightSnapshot).where(
-                InsightSnapshot.id == action.insight_snapshot_id
-            )
+            select(InsightSnapshot).where(InsightSnapshot.id == action.insight_snapshot_id)
         )
         if not baseline_snapshot:
             log.warning("verify_impact.no_baseline", action_id=action_id)
@@ -141,7 +142,7 @@ async def verify_action_impact(ctx: dict, action_id: str) -> None:
             return
 
         baseline_val = _extract_entity_metric(baseline_list, entity_id, metric_key)
-        latest_val   = _extract_entity_metric(latest_list,   entity_id, metric_key)
+        latest_val = _extract_entity_metric(latest_list, entity_id, metric_key)
 
         if baseline_val is None or latest_val is None:
             log.info(

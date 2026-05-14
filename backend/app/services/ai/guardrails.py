@@ -2,6 +2,7 @@
 AI Guardrails — validate AI output trước khi show to user hoặc write to DB.
 INVARIANT: mọi số trong AI text phải trace về source_json.
 """
+
 import copy
 import re
 from dataclasses import dataclass
@@ -28,14 +29,31 @@ INJECTION_PATTERNS = [
     r"đóng\s+vai",
     r"quên\s+(tất\s+cả|hết)",
     r"bây\s+giờ\s+bạn\s+là",
+    # Vietnamese — ADR-AI-002: additional patterns missed in gap analysis
+    r"hãy\s+(làm\s+theo|bỏ\s+qua)",  # "hãy làm theo" / "hãy bỏ qua" without "lệnh"
+    r"nhiệm\s+vụ\s+mới",  # "nhiệm vụ mới" (new task framing)
+    r"bạn\s+không\s+còn\s+là",  # "bạn không còn là Tikai"
+    # English jailbreak suffixes
+    r"in\s+plain\s+text",
+    r"without\s+(any\s+)?restriction",
 ]
 
 # PII field names to sanitize
 PII_FIELD_NAMES = {
-    "buyer_name", "customer_name", "buyer_username", "recipient_name",
-    "buyer_address", "shipping_address", "receiver_address",
-    "buyer_phone", "phone", "phone_number", "mobile",
-    "buyer_email", "email", "email_address",
+    "buyer_name",
+    "customer_name",
+    "buyer_username",
+    "recipient_name",
+    "buyer_address",
+    "shipping_address",
+    "receiver_address",
+    "buyer_phone",
+    "phone",
+    "phone_number",
+    "mobile",
+    "buyer_email",
+    "email",
+    "email_address",
 }
 
 
@@ -90,10 +108,7 @@ def extract_numbers_from_text(text: str) -> list[str]:
     found_set = set(found)
     # Remove any match that is a strict substring of a longer match to avoid
     # partial-overlap false positives (e.g. '186.000' inside '186.000.000')
-    return [
-        n for n in found_set
-        if not any(n != other and n in other for other in found_set)
-    ]
+    return [n for n in found_set if not any(n != other and n in other for other in found_set)]
 
 
 def normalize_number(raw: str) -> Decimal | None:
@@ -167,10 +182,7 @@ def validate_numbers_in_text(
 def detect_injection(text: str) -> bool:
     """Return True if text contains prompt injection patterns."""
     text_lower = text.lower()
-    return any(
-        re.search(pattern, text_lower, re.IGNORECASE)
-        for pattern in INJECTION_PATTERNS
-    )
+    return any(re.search(pattern, text_lower, re.IGNORECASE) for pattern in INJECTION_PATTERNS)
 
 
 def sanitize_for_ai(data: dict) -> dict:

@@ -215,9 +215,11 @@ async def process_import(ctx: dict, session_id: str) -> None:
             )
 
             # 6. Load COGS map
+            # ADR-FIN-004: normalize keys — frontend may send int keys or trailing spaces,
+            # causing a silent key miss → COGS never applied → margin stays None.
             raw_cogs = shop.cogs_map or {}
             cogs_map: dict[str, Decimal] = {
-                sku_id: Decimal(str(val))
+                str(sku_id).strip(): Decimal(str(val))
                 for sku_id, val in raw_cogs.items()
                 if val
             }
@@ -262,6 +264,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                      "gmv": str(s.gmv), "net_revenue": str(s.net_revenue),
                      "order_count": s.order_count, "refund_rate": str(s.refund_rate),
                      "margin_pct": str(s.margin_pct) if s.margin_pct is not None else None,
+                     "margin": str(s.margin) if s.margin is not None else None,
                      "gmv_rank": s.gmv_rank}
                     for s in insight_data.top_skus
                 ],

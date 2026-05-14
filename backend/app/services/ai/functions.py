@@ -6,6 +6,7 @@ INVARIANT:
 - Numbers validated by guardrails before returning
 - Fallback templates used when validation fails
 """
+
 import structlog
 
 from app.core.config import get_settings
@@ -40,6 +41,7 @@ DEFAULT_DISCLAIMER = (
 
 # ── AI #1: Import Rescue ──────────────────────────────────────────────────────
 
+
 async def run_import_rescue(
     input_data: ImportRescueInput,
     shop_id: str,
@@ -50,11 +52,9 @@ async def run_import_rescue(
     No cache — every file is different.
     No number validation — no money numbers in output.
     """
-    # Check injection in headers
-    for header in input_data.headers:
-        if detect_injection(header):
-            log.warning("ai.injection_detected", field="header", shop_id=shop_id)
-
+    # ADR-AI-001: sanitize_for_ai() calls _sanitize_field() → detect_injection() on all string
+    # values and replaces with [SANITIZED]. The separate header loop was redundant and
+    # misleading — logging "injection_detected" without actually blocking it at that point.
     sanitized = sanitize_for_ai(input_data.model_dump())
 
     task = (
@@ -89,6 +89,7 @@ async def run_import_rescue(
 
 
 # ── AI #2: Aha Narrator ───────────────────────────────────────────────────────
+
 
 async def run_aha_narrator(
     input_data: AhaNarrativeInput,
@@ -128,13 +129,17 @@ async def run_aha_narrator(
         validation = validate_numbers_in_text(all_text, input_data.model_dump(mode="json"))
         if not validation.valid:
             log.warning(
-                "ai.invented_numbers", function="aha_narrator",
-                invented=validation.invented_numbers, shop_id=shop_id,
+                "ai.invented_numbers",
+                function="aha_narrator",
+                invented=validation.invented_numbers,
+                shop_id=shop_id,
             )
             output = _fallback_aha_narrative(input_data)
 
         # Cache
-        await cache_set_safe(cache_key, output.model_dump(), settings.ai_narrative_cache_ttl_seconds)
+        await cache_set_safe(
+            cache_key, output.model_dump(), settings.ai_narrative_cache_ttl_seconds
+        )
         return output
 
     except Exception as e:
@@ -144,16 +149,23 @@ async def run_aha_narrator(
 
 def _fallback_aha_narrative(input_data: AhaNarrativeInput) -> AhaNarrativeOutput:
     leak_count = len(input_data.top_leaks)
-    mode_note = " (chưa có giá vốn — đang hiển thị Net Revenue)" if input_data.is_net_revenue_mode else ""
+    mode_note = (
+        " (chưa có giá vốn — đang hiển thị Net Revenue)" if input_data.is_net_revenue_mode else ""
+    )
     return AhaNarrativeOutput(
         summary=f"Shop {input_data.shop_name} {input_data.period_label}: GMV {input_data.gmv_total:,.0f}₫, Net Revenue {input_data.net_revenue:,.0f}₫{mode_note}.",
-        key_insight=f"Có {leak_count} vấn đề cần xử lý tuần này." if leak_count else "Chưa phát hiện vấn đề lớn.",
-        top_action_today=f"Xem chi tiết {input_data.top_leaks[0].name} nếu có." if input_data.top_leaks else "Nhập giá vốn để Tikai tính được lợi nhuận chính xác.",
+        key_insight=f"Có {leak_count} vấn đề cần xử lý tuần này."
+        if leak_count
+        else "Chưa phát hiện vấn đề lớn.",
+        top_action_today=f"Xem chi tiết {input_data.top_leaks[0].name} nếu có."
+        if input_data.top_leaks
+        else "Nhập giá vốn để Tikai tính được lợi nhuận chính xác.",
         missing_data=["ai_narrative_unavailable"],
     )
 
 
 # ── AI #3: Action Coach ───────────────────────────────────────────────────────
+
 
 async def run_action_coach(
     input_data: ActionCoachInput,
@@ -163,8 +175,7 @@ async def run_action_coach(
     """Generate action recommendation for one ActionTrigger."""
     # FIX BUG-H7: use entity_id (unique) not entity_name[:20] (can collide between shops)
     cache_key = ai_narrative_cache_key(
-        shop_id, snapshot_id,
-        f"action_coach_{input_data.rule_id}_{input_data.entity_id}"
+        shop_id, snapshot_id, f"action_coach_{input_data.rule_id}_{input_data.entity_id}"
     )
 
     cached = await cache_get_safe(cache_key)
@@ -195,7 +206,9 @@ async def run_action_coach(
             log.warning("ai.invented_numbers", function="action_coach", shop_id=shop_id)
             output = _fallback_action_coach(input_data)
 
-        await cache_set_safe(cache_key, output.model_dump(), settings.ai_narrative_cache_ttl_seconds)
+        await cache_set_safe(
+            cache_key, output.model_dump(), settings.ai_narrative_cache_ttl_seconds
+        )
         return output
 
     except Exception as e:
@@ -214,6 +227,7 @@ def _fallback_action_coach(input_data: ActionCoachInput) -> ActionCoachOutput:
 
 # ── AI #4: Refund Clusterer ───────────────────────────────────────────────────
 
+
 async def run_refund_clusterer(
     input_data: RefundClusterInput,
     shop_id: str,
@@ -226,14 +240,14 @@ async def run_refund_clusterer(
         return RefundClusterOutput(**cached)
 
     # Check injection in reason texts
-    clean_reasons = [
-        r for r in input_data.refund_reasons if not detect_injection(r)
-    ]
+    clean_reasons = [r for r in input_data.refund_reasons if not detect_injection(r)]
 
-    sanitized = sanitize_for_ai({
-        **input_data.model_dump(mode="json"),
-        "refund_reasons": clean_reasons,
-    })
+    sanitized = sanitize_for_ai(
+        {
+            **input_data.model_dump(mode="json"),
+            "refund_reasons": clean_reasons,
+        }
+    )
     task = (
         "Cluster lý do hoàn hàng thành tối đa 5 nhóm. "
         "Mỗi nhóm có label tiếng Việt, count, pct (0-1), và 2-3 sample reasons. "
@@ -251,7 +265,9 @@ async def run_refund_clusterer(
             max_tokens=600,
         )
         output = RefundClusterOutput(**result)
-        await cache_set_safe(cache_key, output.model_dump(), settings.ai_narrative_cache_ttl_seconds)
+        await cache_set_safe(
+            cache_key, output.model_dump(), settings.ai_narrative_cache_ttl_seconds
+        )
         return output
 
     except Exception as e:
@@ -264,6 +280,7 @@ async def run_refund_clusterer(
 
 
 # ── AI #5: Weekly Receipt Writer ─────────────────────────────────────────────
+
 
 async def run_weekly_receipt(
     input_data: WeeklyReceiptInput,

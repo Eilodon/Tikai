@@ -26,4 +26,6 @@ class ShopResponse(BaseModel):
     # v1.2.0 email digest fields — may be null if migration not yet run
     notification_email: str | None = None
     email_digest_enabled: bool = False
+    # P4-2: trial fields — null for non-trial or expired shops
+    trial_expires_at: datetime | None = None
     created_at: datetime

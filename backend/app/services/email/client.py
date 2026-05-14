@@ -92,7 +92,7 @@ _DIGEST_HTML = """<!DOCTYPE html>
 
           <!-- CTA — URL from settings.app_base_url, not hardcoded -->
           <div style="text-align:center">
-            <a href="{app_base_url}/overview"
+            <a href="{app_base_url}/overview?utm_source=email&amp;utm_medium=weekly_digest&amp;utm_campaign=weekly"
                style="display:inline-block;background:#111;color:#fff;padding:12px 28px;
                       border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">
               Xem chi tiết trên Tikai →
@@ -106,7 +106,8 @@ _DIGEST_HTML = """<!DOCTYPE html>
           <p style="font-size:12px;color:#9ca3af;margin:0;line-height:1.6">
             {disclaimer}<br><br>
             Nhận email này vì bạn bật thông báo tại Tikai.<br>
-            <a href="{app_base_url}/settings" style="color:#6b7280">Tắt thông báo email</a>
+            <a href="{app_base_url}/settings?utm_source=email&amp;utm_medium=weekly_digest#notifications"
+               style="color:#6b7280">Tắt thông báo email</a>
           </p>
         </td></tr>
 
@@ -215,7 +216,7 @@ async def send_weekly_digest(
         message = Mail(
             from_email=(settings.email_from_address, settings.email_from_name),
             to_emails=to_email,
-            subject=f"[Tikai] {headline} — {period_label}",
+            subject=f"[Tikai] {shop_name}: {headline} — {period_label}",
             html_content=html_content,
         )
         sg = sendgrid.SendGridAPIClient(api_key=settings.sendgrid_api_key)

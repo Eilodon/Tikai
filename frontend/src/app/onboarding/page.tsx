@@ -13,7 +13,7 @@ export default function OnboardingPage() {
       if (!token) return
       try {
         await shopsApi.getMe(token)
-        router.replace("/import")
+        router.replace("/overview")
       } catch {
         // No shop yet — stay on onboarding
       }

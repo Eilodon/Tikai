@@ -64,7 +64,12 @@ export function WhatIfPanel({ sku, snapshotId, onClose }: WhatIfPanelProps) {
           {/* Affiliate Rate */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <label className="font-medium text-gray-700">Affiliate rate</label>
+              <label className="font-medium text-gray-700">
+                Affiliate rate
+                <span className="ml-1.5 text-xs font-normal text-gray-400">
+                  (hiện tại: {(currentAffRate * 100).toFixed(1)}%)
+                </span>
+              </label>
               <span className="font-semibold text-blue-600">{(affiliateRate * 100).toFixed(0)}%</span>
             </div>
             <input
@@ -81,7 +86,12 @@ export function WhatIfPanel({ sku, snapshotId, onClose }: WhatIfPanelProps) {
           {/* Voucher Rate */}
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <label className="font-medium text-gray-700">Voucher rate</label>
+              <label className="font-medium text-gray-700">
+                Voucher rate
+                <span className="ml-1.5 text-xs font-normal text-gray-400">
+                  (hiện tại: {(currentVoucherRate * 100).toFixed(1)}%)
+                </span>
+              </label>
               <span className="font-semibold text-blue-600">{(voucherRate * 100).toFixed(0)}%</span>
             </div>
             <input

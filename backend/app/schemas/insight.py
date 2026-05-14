@@ -117,4 +117,6 @@ class InsightSnapshotResponse(BaseModel):
     # NEW: period metadata for incomplete-period warning
     days_in_period: int = 7
     is_partial_period: bool = False
+    # True when this is the first snapshot for the shop — triggers WowScreen
+    is_first_import: bool = False
     created_at: datetime

@@ -53,6 +53,7 @@ class SKUSummaryItem(BaseModel):
     gmv: MoneyVND
     net_revenue: MoneyVND
     order_count: int
+    total_quantity: int = 0
     refund_rate: Decimal  # 0-1
     margin_pct: Decimal | None  # None if COGS missing — ratio relative to GMV
     margin: Decimal | None = None  # absolute VND (net_revenue - COGS); None if COGS missing

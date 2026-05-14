@@ -8,13 +8,16 @@ FIXES:
 - NEW: POST /insights/recompute for instant recalc after COGS update
 """
 
+import csv
 import hashlib
+import io
 import uuid
 from decimal import Decimal
 from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -463,6 +466,7 @@ async def recompute_insight(
                 "gmv": str(s.gmv),
                 "net_revenue": str(s.net_revenue),
                 "order_count": s.order_count,
+                "total_quantity": s.total_quantity,
                 "refund_rate": str(s.refund_rate),
                 "margin_pct": str(s.margin_pct) if s.margin_pct is not None else None,
                 "margin": str(s.margin) if s.margin is not None else None,
@@ -516,3 +520,68 @@ async def recompute_insight(
 
     log.info("recompute_insight.done", shop_id=str(shop.id), snapshot_id=str(new_snapshot.id))
     return _to_response(new_snapshot)
+
+
+# ── CSV Export ────────────────────────────────────────────────────────────────
+
+@router.get("/insights/{snapshot_id}/export.csv")
+async def export_snapshot_csv(
+    snapshot_id: uuid.UUID,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    """Export top SKU P&L from a snapshot as CSV.
+    Gated: Feature.CSV_EXPORT (pro/business only).
+    """
+    require_feature(shop, Feature.CSV_EXPORT)
+
+    snapshot = await db.scalar(
+        select(InsightSnapshot).where(
+            InsightSnapshot.id == snapshot_id,
+            InsightSnapshot.shop_id == shop.id,
+        )
+    )
+    if not snapshot:
+        raise HTTPException(
+            404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy snapshot."}},
+        )
+
+    top_skus = _safe_parse(SKUSummaryItem, snapshot.top_skus_json or [])
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "SKU ID", "SKU Name", "GMV (VND)", "Net Revenue (VND)",
+        "Orders", "Units Sold", "Refund Rate (%)",
+        "Margin (VND)", "Margin (%)", "Health",
+        "Affiliate Cost (VND)", "Voucher Cost (VND)",
+    ])
+    for s in top_skus:
+        refund_pct = f"{float(s.refund_rate) * 100:.1f}"
+        margin_pct = f"{float(s.margin_pct) * 100:.1f}" if s.margin_pct is not None else ""
+        writer.writerow([
+            s.sku_id,
+            s.sku_name,
+            str(s.gmv),
+            str(s.net_revenue),
+            s.order_count,
+            s.total_quantity,
+            refund_pct,
+            str(s.margin) if s.margin is not None else "",
+            margin_pct,
+            s.health_status,
+            str(s.affiliate_commission),
+            str(s.voucher_cost),
+        ])
+
+    period = f"{snapshot.period_start}_{snapshot.period_end}"
+    filename = f"tikai_sku_{period}.csv"
+    buf.seek(0)
+
+    log.info("export_snapshot_csv", shop_id=str(shop.id), snapshot_id=str(snapshot_id), rows=len(top_skus))
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

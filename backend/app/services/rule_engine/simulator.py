@@ -60,9 +60,12 @@ def simulate_sku(
     current_aff = Decimal(str(sku_snapshot.get("affiliate_commission", 0) or 0))
     current_voucher = Decimal(str(sku_snapshot.get("voucher_cost", 0) or 0))
     order_count = int(sku_snapshot.get("order_count", 1) or 1)
+    # BUG-SIM-01: use total_quantity (units sold) for COGS, not order_count (orders placed).
+    # One order can contain multiple units; using order_count understates COGS for multi-unit orders.
+    total_quantity = int(sku_snapshot.get("total_quantity") or order_count)
 
     # Current margin
-    cogs_total = cogs_per_unit * order_count if cogs_per_unit is not None else None
+    cogs_total = cogs_per_unit * total_quantity if cogs_per_unit is not None else None
     current_margin = (current_net_revenue - cogs_total) if cogs_total is not None else None
     current_margin_pct = (
         safe_divide(current_margin, current_gmv) if current_margin is not None and current_gmv > 0

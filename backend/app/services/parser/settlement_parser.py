@@ -15,11 +15,17 @@ from app.services.parser.normalizer import parse_date, parse_money
 log = structlog.get_logger()
 
 SETTLEMENT_COLUMN_ALIASES: dict[str, list[str]] = {
-    "payout_id":     ["Payout ID", "Mã thanh toán"],
-    "order_id":      ["Order ID", "Mã đơn hàng"],
-    "payout_amount": ["Payout Amount", "Số tiền thanh toán"],
-    "payout_time":   ["Payout Time", "Thời gian thanh toán"],
-    "status":        ["Status", "Trạng thái"],
+    "payout_id":        ["Payout ID", "Mã thanh toán"],
+    "order_id":         ["Order ID", "Mã đơn hàng"],
+    "payout_amount":    ["Payout Amount", "Số tiền thanh toán"],
+    "payout_time":      ["Payout Time", "Thời gian thanh toán"],
+    "status":           ["Status", "Trạng thái"],
+    # Extended columns — present in newer TikTok settlement exports
+    "transaction_type": ["Transaction Type", "Loại giao dịch"],
+    "fee_amount":       ["Fee Amount", "Số tiền phí", "Fee"],
+    "description":      ["Description", "Mô tả", "Remarks"],
+    "adjustment_type":  ["Adjustment Type", "Loại điều chỉnh"],
+    "seller_sku":       ["Seller SKU", "SKU người bán", "SKU"],
 }
 
 
@@ -31,12 +37,22 @@ class SettlementRow:
         payout_amount: Decimal,
         payout_date: date | None,
         status: str,
+        transaction_type: str = "",
+        fee_amount: Decimal = Decimal("0"),
+        description: str = "",
+        adjustment_type: str = "",
+        seller_sku: str = "",
     ):
         self.payout_id = payout_id
         self.order_id = order_id
         self.payout_amount = payout_amount
         self.payout_date = payout_date
         self.status = status
+        self.transaction_type = transaction_type
+        self.fee_amount = fee_amount
+        self.description = description
+        self.adjustment_type = adjustment_type
+        self.seller_sku = seller_sku
 
 
 def parse_settlement_csv(file_bytes: bytes, filename: str) -> list[SettlementRow]:
@@ -80,6 +96,11 @@ def parse_settlement_csv(file_bytes: bytes, filename: str) -> list[SettlementRow
             payout_amount=parse_money(get("payout_amount")),
             payout_date=parse_date(get("payout_time")),
             status=get("status"),
+            transaction_type=get("transaction_type"),
+            fee_amount=parse_money(get("fee_amount")),
+            description=get("description"),
+            adjustment_type=get("adjustment_type"),
+            seller_sku=get("seller_sku"),
         ))
 
     log.info("settlement_parser.complete", rows=len(rows))

@@ -281,7 +281,8 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 top_skus_json=[
                     {"sku_id": s.sku_id, "sku_name": s.sku_name,
                      "gmv": str(s.gmv), "net_revenue": str(s.net_revenue),
-                     "order_count": s.order_count, "refund_rate": str(s.refund_rate),
+                     "order_count": s.order_count, "total_quantity": s.total_quantity,
+                     "refund_rate": str(s.refund_rate),
                      "margin_pct": str(s.margin_pct) if s.margin_pct is not None else None,
                      "margin": str(s.margin) if s.margin is not None else None,
                      "gmv_rank": s.gmv_rank,

@@ -1,116 +1,77 @@
-# Tikai — AI-Powered P&L Insights for TikTok Shop Vietnam
+# Tikai
 
-Tikai helps Vietnamese TikTok Shop sellers understand their profitability, detect revenue leaks, and take actionable steps to improve margins — all powered by AI analysis and automated insights.
+AI-powered P&L analytics for Vietnamese TikTok Shop sellers. Tikai parses platform CSV exports, calculates true profitability per SKU and creator, detects revenue leaks, and generates actionable Vietnamese-language recommendations backed by Claude.
 
-**Status:** Production-ready (v2.0.2) | **Tier:** Tier 3 Financial SaaS | **Multi-tenant** | **PII-safe**
+**Version:** 2.0.2 | **Stack:** FastAPI · Next.js 15 · PostgreSQL · Redis · Anthropic API
 
 ---
 
 ## Features
 
-### 📊 Intelligent P&L Analysis
-- **Automatic fee detection** — Parses platform commissions, transaction fees, order processing fees from CSV exports
-- **Cost breakdown** — Tracks vouchers, shipping subsidies, refunds per order
-- **Net revenue calculation** — Accurate profitability per SKU, creator, and category
-- **Time-aware fee config** — Applies correct fees based on import date (handles fee changes mid-period)
-
-### 🎯 AI-Driven Action Engine
-- **Revenue leak detection** — Identifies unprofitable SKUs, high-refund categories, low-ROI creators
-- **Confidence scoring** — High/Medium/Low confidence on each recommendation
-- **Action Coach** — Explains why, what to do, expected impact in Vietnamese
-- **Settlement forecast** — Projects cash inflow over 14 days
-
-### 📱 Seller Dashboard
-- **Weekly digests** — Email summaries of completed actions + projected savings
-- **Action tracking** — Mark actions as done, dismiss, confirm actual impact
-- **COGS management** — Input cost-of-goods to calculate true margins
-- **Insight history** — Week-over-week P&L comparison (4 weeks)
-
-### 🔐 Enterprise Security
-- **PII protection** — Masks buyer names, addresses, phone numbers in AI processing
-- **Prompt injection defense** — Detects jailbreak attempts in both English and Vietnamese
-- **Rate limiting** — Per-IP throttling (200/min default, shop-aware overrides available)
-- **Secret scanning** — No hardcoded API keys, JWT secrets from environment only
-- **IDOR invariants** — All queries filtered by shop_id at the database layer
+- **P&L breakdown** — Net revenue per SKU/creator after platform commission, transaction fees, vouchers, refunds, and COGS
+- **Time-aware fee config** — Correct fee rates applied per import period (handles mid-period fee changes)
+- **Revenue leak detection** — Flags negative-margin SKUs, high-refund categories, low-ROI creators with confidence scores
+- **AI action recommendations** — Claude explains each issue in Vietnamese and suggests a concrete next step
+- **Weekly receipt** — Monday digest of completed actions and estimated savings
+- **Settlement forecast** — Cash inflow projection over the next 14 days
+- **COGS management** — Bulk upsert cost-of-goods to unlock true margin calculation
+- **Recompute** — Re-run Rule Engine on existing orders after COGS update (Pro+)
 
 ---
 
 ## Tech Stack
 
-### Backend
-- **Framework:** FastAPI (Python 3.11)
-- **Database:** PostgreSQL + SQLAlchemy ORM
-- **Cache:** Redis (ARQ for background tasks)
-- **File storage:** Supabase Storage (S3-compatible)
-- **AI:** Claude Sonnet 4.5 + Haiku 4.5 (Anthropic API)
-- **Auth:** Supabase Auth (JWT) + Custom shop_id authorization
-- **Async:** asyncio, ARQ worker pool
-
-### Frontend
-- **Framework:** Next.js 15 (App Router, Server Components)
-- **Styling:** Tailwind CSS 4.0
-- **State:** TanStack React Query (cached queries, optimistic updates)
-- **Auth:** Supabase SSR client + middleware guards
-- **Charts:** Recharts (weekly trends, P&L visualization)
-- **Testing:** Vitest + React Testing Library + MSW
-
-### DevOps
-- **Containerization:** Docker (multi-stage, non-root user)
-- **Orchestration:** Railway (backend + worker services)
-- **CI/CD:** Git-based (push to deploy)
-- **Monitoring:** Sentry (error tracking)
-- **Database:** PostgreSQL on Railway
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.12, FastAPI, SQLAlchemy 2.x (asyncio), Alembic |
+| Worker | ARQ (async Redis Queue), asyncio |
+| Database | PostgreSQL 14+ |
+| Cache / Queue | Redis 7+ |
+| AI | Anthropic API — Claude Haiku 4.5 (fast tasks) + Sonnet 4.5 (clustering) |
+| Auth | Supabase Auth (JWT) + shop-scoped authorization |
+| Storage | Supabase Storage (CSV/XLSX files) |
+| Frontend | Next.js 15 (App Router), React 19, TanStack Query, Tailwind CSS 4 |
+| Email | SendGrid |
+| Monitoring | Sentry, structlog (JSON) |
+| CI | GitHub Actions (lint · test · typecheck · vitest) |
+| Deployment | Railway (API service + Worker service) |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Frontend (Next.js)                     │
-│  Pages: Overview, Import, Actions, Settings, Livestream    │
-│  Hooks: useLatestInsight, useActions, useImportStatus      │
-│  API Client: Retry logic, 401 token refresh, error mapping │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       ↓ (FastAPI + JSON)
-┌──────────────────────────────────────────────────────────────┐
-│                   Backend (FastAPI)                          │
-├──────────────────────────────────────────────────────────────┤
-│ Auth Layer                                                   │
-│  └─ JWT from Supabase + shop_id from request context       │
-│                                                              │
-│ API Routes                                                   │
-│  ├─ /v1/imports/* — File upload → ARQ enqueue              │
-│  ├─ /v1/insights/* — Latest + history, recompute           │
-│  ├─ /v1/actions/* — List, complete, dismiss                │
-│  ├─ /v1/shops/* — Shop settings, COGS, notifications       │
-│  └─ /v1/livestream/* — Live ROI tracking                   │
-│                                                              │
-│ Rule Engine (Insight Builder)                              │
-│  ├─ Fee Config (time-aware, effective_from/to dates)      │
-│  ├─ Cost Calculator (transaction_fee, order_processing_fee)│
-│  ├─ Insight Builder (159 lines, never raises)              │
-│  ├─ Baselines (refund rates per category)                  │
-│  └─ Settlement Forecast (cash_in_14d)                      │
-│                                                              │
-│ AI Services                                                 │
-│  ├─ ImportRescue — Fix malformed CSVs                      │
-│  ├─ AhaNarrator — Narrative P&L summary                    │
-│  ├─ ActionCoach — Per-action recommendations               │
-│  └─ Cost Tracking — Atomic Lua script (no race conditions) │
-│                                                              │
-│ Data Layer                                                   │
-│  ├─ Alembic migrations (0001–0007)                         │
-│  ├─ Models: Shop, Order, ImportSession, InsightSnapshot   │
-│  ├─ Models: AIAction, WeeklyReceipt, FeeConfig, LiveStream │
-│  └─ Indexes: ix_orders_shop_id_sku_name, etc              │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-         ┌─────────────┼─────────────┐
-         ↓             ↓             ↓
-    PostgreSQL      Redis        Supabase
-    (PG 14+)      (ARQ pool)    (Auth + Storage)
+Frontend (Next.js 15)
+  pages: overview · import · actions · livestream · settings
+  auth:  Supabase SSR + middleware guards
+        │
+        │ REST/JSON (Bearer JWT)
+        ▼
+Backend (FastAPI)
+  /v1/imports      — upload CSV/XLSX → enqueue ARQ job
+  /v1/insights     — latest snapshot, history, recompute
+  /v1/actions      — list, complete, dismiss AI recommendations
+  /v1/shops        — profile, COGS, notification settings
+  /v1/weekly-receipts
+  /v1/livestream
+        │
+        ├── Rule Engine
+        │     fee_calculator · pl_calculator · leak_detector
+        │     action_rules · settlement_calc · baselines
+        │
+        ├── AI Services (5 functions, all with sanitize→call→validate→fallback)
+        │     import_rescue · aha_narrator · action_coach
+        │     refund_clusterer · weekly_receipt
+        │
+        └── ARQ Worker (job_timeout=300s, max_jobs=10)
+              process_import       — on demand (file upload)
+              run_weekly_receipts  — cron Mon 08:00 VN
+              verify_action_impact — on demand (7 days post-completion)
+              cleanup_stuck_imports — cron every hour :05
+        │
+  ┌─────┴──────┬────────────┐
+  PostgreSQL   Redis        Supabase
+  (data)       (ARQ queue)  (auth + file storage)
 ```
 
 ---
@@ -118,311 +79,209 @@ Tikai helps Vietnamese TikTok Shop sellers understand their profitability, detec
 ## Getting Started
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
+
+- Python 3.12+
+- Node.js 20+
 - PostgreSQL 14+
 - Redis 7+
 
-### Backend Setup
+### Backend
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # or: venv\Scripts\activate (Windows)
-pip install -r requirements.txt
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your Supabase keys, Anthropic API key, etc.
+python -m venv .venv
+source .venv/bin/activate
+
+pip install -e ".[dev]"
+
+# Copy and fill environment variables
+cp .env.example .env   # or create manually — see Environment Variables section
 
 # Run migrations
 alembic upgrade head
 
-# Start dev server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Start API server
+uvicorn app.main:app --reload --port 8000
 
-# In another terminal, start ARQ worker
+# In a separate terminal: start ARQ worker
 python -m arq app.tasks.worker.WorkerSettings
 ```
 
-### Frontend Setup
+### Frontend
 
 ```bash
 cd frontend
+
 npm install
 
-# Configure environment
-cp .env.example .env.local
-# Edit .env.local with API URL + Supabase credentials
+cp .env.example .env.local   # fill NEXT_PUBLIC_API_URL + Supabase credentials
 
-# Start dev server
-npm run dev
-# Open http://localhost:3000
-```
-
-### Database Migrations
-
-```bash
-# View pending migrations
-alembic current
-alembic history
-
-# Run specific migration
-alembic upgrade +2  # Run next 2 pending migrations
-
-# Downgrade
-alembic downgrade -1  # Undo last migration
+npm run dev   # http://localhost:3000
 ```
 
 ---
 
-## Development Workflow
+## Environment Variables
 
-### Running Tests
+All backend config lives in `backend/app/core/config.py` (Pydantic Settings). Required fields:
 
-**Backend:**
-```bash
-cd backend
-pytest tests/                    # All tests
-pytest tests/test_idor.py       # IDOR invariants only
-pytest -v --tb=short           # Verbose output
+```env
+# App
+ENVIRONMENT=development          # development | production
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/tikai
+REDIS_URL=redis://localhost:6379
+
+# Supabase
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_JWT_SECRET=...
+
+# AI
+ANTHROPIC_API_KEY=sk-ant-...
+
+# CORS
+ALLOWED_ORIGINS=["http://localhost:3000"]
+
+# Email (optional — weekly digests)
+SENDGRID_API_KEY=...
+EMAIL_FROM_ADDRESS=noreply@tikai.vn
+
+# Monitoring (optional)
+SENTRY_DSN=https://xxx@sentry.io/123456
 ```
 
-**Frontend:**
+Frontend (`.env.local`):
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+```
+
+---
+
+## Development
+
+### Tests
+
+```bash
+# Backend — unit tests only (no DB, no AI calls required)
+cd backend
+pytest tests/ -m "not ai_eval" -v
+
+# Backend — with coverage
+pytest tests/ -m "not ai_eval" --cov=app --cov-report=term-missing
+
+# Frontend
+cd frontend
+npm test              # run once
+npm run test:watch    # watch mode
+npm run test:coverage
+```
+
+### Linting & Type Checking
+
+```bash
+# Backend
+cd backend
+ruff check app/       # lint
+ruff format app/      # format
+mypy app/             # type check (informational — strict mode, continue-on-error in CI)
+
+# Frontend
+cd frontend
+npm run lint          # ESLint
+npm run type-check    # tsc --noEmit
+```
+
+### Generating Frontend API Types
+
 ```bash
 cd frontend
-npm test                         # Run all tests
-npm run test:watch             # Watch mode
-npm run test:coverage          # Coverage report
+npm run generate-types   # reads /openapi.json from running backend
 ```
 
-### Code Quality
-
-**Backend:**
-```bash
-black app/                      # Format
-flake8 app/                     # Lint
-mypy app/                       # Type check
-```
-
-**Frontend:**
-```bash
-npm run lint                    # ESLint
-npm run type-check             # TypeScript check
-```
-
-### Git Workflow
+### Migrations
 
 ```bash
-# Create feature branch
-git checkout -b feature/your-feature
+cd backend
+alembic upgrade head      # apply all pending
+alembic current           # show current revision
+alembic history           # full history
+alembic downgrade -1      # undo last migration
 
-# Make changes, commit
-git add .
-git commit -m "Brief description of what changed
-
-Detailed explanation if needed.
-
-https://claude.ai/code/session_..."
-
-# Push and create PR
-git push -u origin feature/your-feature
+# Create a new migration
+alembic revision --autogenerate -m "add_column_x"
 ```
 
 ---
 
-## Deployment
+## Deployment (Railway)
 
-### Environment Variables
+### Services
 
-**Backend (.env):**
-```env
-ENVIRONMENT=production
-DATABASE_URL=postgresql://user:pass@host:5432/tikai
-REDIS_URL=redis://host:6379
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_JWT_SECRET=...
-ANTHROPIC_API_KEY=sk-ant-...
-SENTRY_DSN=https://xxx@sentry.io/123456
-ALLOWED_ORIGINS=["https://app.tikai.vn"]
+| Service | Build | Start command |
+|---|---|---|
+| API | `Dockerfile.prod` | `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2` |
+| Worker | `Dockerfile.prod` | `python -m arq app.tasks.worker.WorkerSettings` |
+
+### Pre-deploy Checklist
+
+```
+□ alembic upgrade head ran against production DB
+□ ALLOWED_ORIGINS set to production frontend URL
+□ ANTHROPIC_API_KEY configured
+□ SENTRY_DSN configured
+□ Worker service running (check Railway logs)
+□ GET /healthz → {"status":"ok"}
+□ GET /readyz  → {"status":"ready","db":"ok","redis":"ok"}
 ```
 
-**Frontend (.env.production):**
-```env
-NEXT_PUBLIC_API_URL=https://api.tikai.vn
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-```
+### Health Endpoints
 
-### Railway Deployment
-
-1. **Backend Service:**
-   - Build: Dockerfile.prod
-   - Start command: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2`
-   - Set environment variables (SENTRY_DSN, ALLOWED_ORIGINS, etc.)
-
-2. **Worker Service:**
-   - Build: Dockerfile.prod
-   - Start command: `python -m arq app.tasks.worker.WorkerSettings`
-   - Config: railway.worker.json
-
-3. **Database:**
-   - PostgreSQL 14+
-   - Run migrations: `alembic upgrade head`
-
-4. **Staging Checklist:**
-   ```
-   ✅ ALLOWED_ORIGINS set to https://app.tikai.vn
-   ✅ SENTRY_DSN configured
-   ✅ ANTHROPIC_API_KEY set
-   ✅ Migrations ran (alembic upgrade head)
-   ✅ Worker service running + monitoring
-   ✅ Health check: GET /healthz → 200 OK
-   ```
+| Endpoint | Purpose |
+|---|---|
+| `GET /healthz` | Liveness probe — always 200 if process is alive |
+| `GET /readyz` | Readiness probe — checks DB + Redis connectivity |
+| `GET /health` | Legacy (kept for backward compat) |
 
 ---
 
 ## Key Design Decisions
 
-### 1. Time-Aware Fee Configuration
-Orders are charged fees based on when they were created, not when imported. Migration 0006 inserts a new 2025-VN-v2 fee config with effective_to dates, ensuring historical imports use correct rates.
+**Time-aware fee config** — Orders are priced by their creation date. `process_import` and `recompute` both look up `FeeConfig` by `effective_from ≤ period_end ≤ effective_to`, not by current shop settings. This prevents historical recomputes from applying today's fee rates to last month's orders.
 
-**Code:** `process_import.py:145-157`
+**Rule Engine never raises** — `process_import` wraps the entire job in a try/except that updates `ImportSession.status = "failed"` on any unhandled exception, so sellers always see a terminal state rather than a hung import.
 
-### 2. Never-Raise Background Tasks
-The `process_import` function has an outer try/except that catches ALL exceptions and updates the session status to `failed` rather than raising. This prevents hung imports and ensures the user always sees a terminal state.
+**AI guardrail pipeline** — Every AI call follows: `sanitize_for_ai()` (PII mask + injection filter + `__tikai_data__` delimiter) → `call_ai()` → `validate_numbers_in_text()` (all numbers in output must exist in source JSON ±1%) → fallback template on validation failure. All 5 AI functions use this pattern.
 
-**Code:** `process_import.py:376-401`
+**Atomic AI cost tracking** — Per-shop monthly budget ($0.50 default) is tracked in Redis with a Lua script that atomically checks + increments spend in one round-trip, preventing budget overruns under concurrent imports.
 
-### 3. Atomic Cost Recording (Lua Script)
-AI cost tracking uses a Redis Lua script to atomically increment total spend + call count in a single round-trip, preventing race conditions between concurrent imports.
-
-**Code:** `client.py:48-57`
-
-### 4. Per-IP Rate Limiting with NAT Trade-off
-Rate limiting is per-IP (not per-shop) to avoid complex Redis key management. This is documented as an acceptable trade-off for MVP; post-launch we can implement per-shop limits if abuse detected.
-
-**Code:** `rate_limit.py:25-29`
-
-### 5. PII Masking + Prompt Injection Defense
-Before sending order data to Claude, we mask buyer names/addresses and strip prompt injection patterns. Additionally, camelCase field names are normalized to snake_case to catch PII bypass attempts.
-
-**Code:** `guardrails.py:176-208`
+**Stable advisory lock keys** — `recompute_insight` uses `hashlib.md5(shop_id)` for PostgreSQL advisory lock keys. Python's `hash()` is randomized per process since 3.3 (PYTHONHASHSEED), which silently breaks cross-process locking in Railway's multi-replica deployments.
 
 ---
 
-## Monitoring & Debugging
+## Monitoring
 
-### Health Checks
-```bash
-# Backend health
-curl http://localhost:8000/healthz
+**Stuck imports** — `cleanup_stuck_imports` runs every hour and marks sessions stuck in `processing` > 10min or `pending` > 20min as `failed`. Check `cleanup_stuck_imports.fixed` in logs if sellers report hung imports.
 
-# Database connection
-curl http://localhost:8000/health/db
+**AI budget** — Monitor `ai_cost_monthly_v2:{shop_id}` hash in Redis. Key TTL resets on the first of each month.
 
-# Redis connection (via ARQ pool test)
-# Check logs for "arq.pool_dead_recreating"
-```
+**AI hallucination rate** — `validate_numbers_in_text` logs `ai.invented_numbers` on failure. If this fires repeatedly for the same function, the model may be drifting.
 
-### Logs
-- **Backend:** Structured logging with structlog (JSON format in production)
-- **Frontend:** Console logs in dev, Sentry in production
-- **Worker:** ARQ logs + custom import task logs
-
-### Common Issues
-
-**Import stuck in "processing":**
-- Check ARQ worker is running: `ps aux | grep arq`
-- Check Redis connection: `redis-cli ping`
-- Worker will auto-mark as failed if > 10min (cleanup_stuck_imports cron)
-
-**"AI budget exceeded" error:**
-- Check HGET ai_cost_monthly_v2:{shop_id} total_usd in Redis
-- TTL resets monthly (calendar month, not rolling 30d)
-
-**CORS errors on frontend:**
-- Verify ALLOWED_ORIGINS in backend env vars
-- Check middleware whitelist in `middleware.ts`
-
----
-
-## Testing Strategy
-
-### Test Pyramid
-```
-                 ▲
-               /   \
-              /  E2E \     (Optional: Playwright)
-             /________\
-            /          \
-           /  Integration\  (ImportPage, OverviewPage)
-          /_______________\
-         /                 \
-        /  Unit Tests       \  (Formatters, Components)
-       /___________________\
-```
-
-### Phase Coverage (v2.0.2)
-- ✅ Phase 1: Hard gates (security, IDOR, secrets, email validation)
-- ✅ Phase 2: Data integrity (fee config boundaries, settlement safety)
-- ✅ Phase 3: AI governance (budget atomicity, background task reliability)
-- ✅ Phase 4: Frontend (component tests, integration tests, 60% coverage)
-
----
-
-## API Documentation
-
-### Generate OpenAPI Schema
-```bash
-# Backend serves OpenAPI at /openapi.json
-curl http://localhost:8000/openapi.json | jq
-
-# Frontend can generate TS types from it
-cd frontend && npm run generate-types
-```
-
-### Key Endpoints
-
-| Method | Path | Auth | Purpose |
-|--------|------|------|---------|
-| POST | `/v1/imports` | Bearer | Upload CSV/XLSX file (202 Accepted) |
-| GET | `/v1/imports/{id}` | Bearer | Poll import status |
-| GET | `/v1/insights/latest` | Bearer | Latest P&L snapshot |
-| GET | `/v1/insights/history?weeks=4` | Bearer | Week-over-week history |
-| POST | `/v1/insights/recompute` | Bearer | Re-run Rule Engine (Pro+ only) |
-| GET | `/v1/actions` | Bearer | List all actions (pending + done) |
-| PATCH | `/v1/actions/{id}/complete` | Bearer | Mark action as done |
-| PATCH | `/v1/actions/{id}/dismiss` | Bearer | Dismiss action |
-| GET | `/v1/shops/me` | Bearer | Current shop profile |
-| PATCH | `/v1/shops/me` | Bearer | Update shop settings |
-| POST | `/v1/cogs` | Bearer | Bulk upsert SKU cost-of-goods |
-
----
-
-## License
-
-**Proprietary** — Tikai is closed-source commercial software. All rights reserved.
-
----
-
-## Support
-
-- **Issues:** Report via internal issue tracker
-- **Bugs:** Email support@tikai.vn
-- **Feature requests:** Contact product@tikai.vn
+**Shopee fee config** — Startup logs `startup.fee_config_missing` (CRITICAL) if no Shopee fee config exists. Without it, Shopee imports silently fall back to TikTok rates → wrong P&L.
 
 ---
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for version history and breaking changes.
-
-- **v2.0.2:** Add per-IP rate limiting, fix PII camelCase bypass, staging env validators
-- **v2.0.1:** Fix Shopee platform field, add transaction_fee + order_processing_fee to orders
-- **v2.0.0:** Initial production release
+| Version | Summary |
+|---|---|
+| 2.0.2 | Security hardening (XFF rate limit, IDOR guard, PII stripping), architectural fixes (connection pool, SQLAlchemy 2.x session lifecycle), financial logic fixes (margin VND vs ratio, COGS key normalization), AI safety (injection patterns, startup checks), async correctness (missing db.commit in verify_action_impact) |
+| 2.0.1 | Shopee platform support, transaction_fee + order_processing_fee fields |
+| 2.0.0 | Initial production release |
 
 ---
 
-**Last updated:** May 2026 | **Audited:** Phase 1–4 production-readiness ✅
+**License:** Proprietary — all rights reserved.

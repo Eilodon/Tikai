@@ -4,11 +4,50 @@ import { useImportStatus } from "@/hooks/useApi"
 import { importsApi, cogsApi, ImportSessionResponse } from "@/lib/api"
 import { getAuthToken } from "@/lib/supabase"
 
+function ExportGuide() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border rounded-xl overflow-hidden text-sm">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+      >
+        <span className="font-medium text-gray-700">Hướng dẫn xuất file từ Seller Center</span>
+        <span className="text-gray-400">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-4 py-4 grid sm:grid-cols-2 gap-6">
+          <div>
+            <p className="font-semibold text-gray-800 mb-2">TikTok Shop</p>
+            <ol className="list-decimal list-inside space-y-1.5 text-gray-600">
+              <li>Vào <strong>Seller Center</strong> → <strong>Quản lý đơn hàng</strong></li>
+              <li>Nhấn <strong>Xuất dữ liệu</strong> (Export Orders)</li>
+              <li>Chọn khoảng thời gian cần phân tích</li>
+              <li>Tải file <code className="bg-gray-100 px-1 rounded">.xlsx</code> về máy</li>
+              <li>Upload lên đây</li>
+            </ol>
+          </div>
+          <div>
+            <p className="font-semibold text-gray-800 mb-2">Shopee</p>
+            <ol className="list-decimal list-inside space-y-1.5 text-gray-600">
+              <li>Vào <strong>Seller Center</strong> → <strong>Đơn hàng</strong> → <strong>Tra cứu đơn hàng</strong></li>
+              <li>Chọn khoảng thời gian cần phân tích</li>
+              <li>Nhấn <strong>Xuất file Excel</strong> (Export)</li>
+              <li>Upload lên đây</li>
+            </ol>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ImportPage() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [showCogsStep, setShowCogsStep] = useState(false)
+  const [topSkusForCogs, setTopSkusForCogs] = useState<Array<{ sku_id: string; sku_name: string; gmv: string }>>([])
 
   const [token, setToken] = useState<string | null>(null)
   const { data: session } = useImportStatus(sessionId)
@@ -43,8 +82,10 @@ export default function ImportPage() {
     <div className="space-y-6 max-w-xl">
       <div>
         <h1 className="text-xl font-semibold">Import dữ liệu</h1>
-        <p className="text-sm text-gray-500 mt-1">Upload file Order Export từ TikTok Shop Seller Center.</p>
+        <p className="text-sm text-gray-500 mt-1">Upload file Order Export từ TikTok Shop hoặc Shopee Seller Center.</p>
       </div>
+
+      <ExportGuide />
 
       {/* Dropzone */}
       {!sessionId && (
@@ -78,12 +119,15 @@ export default function ImportPage() {
 
       {/* Processing Status */}
       {session && <ImportStatus session={session} onCompletedWithTopSkus={(skus) => {
+        setTopSkusForCogs(skus)
         if (skus.length > 0) setShowCogsStep(true)
       }} />}
-      {showCogsStep && token && session?.status === "completed" && (
+      {showCogsStep && token && (
+        session?.status === "completed" || session?.status === "completed_with_caveats"
+      ) && (
         <PostImportCOGSPrompt
           token={token}
-          topSkus={[]}
+          topSkus={topSkusForCogs}
           onSkip={() => setShowCogsStep(false)}
         />
       )}
@@ -199,8 +243,13 @@ function ImportStatus({ session, onCompletedWithTopSkus }: {
   onCompletedWithTopSkus?: (skus: {sku_id: string; sku_name: string}[]) => void
 }) {
   useEffect(() => {
-    if (session.status === "completed" && onCompletedWithTopSkus) {
-      onCompletedWithTopSkus([])
+    // P0-1 fix: pass actual top_skus_for_cogs (was always [])
+    // P0-4 fix: also trigger for completed_with_caveats (Shopee partial imports)
+    if (
+      (session.status === "completed" || session.status === "completed_with_caveats")
+      && onCompletedWithTopSkus
+    ) {
+      onCompletedWithTopSkus(session.top_skus_for_cogs ?? [])
     }
   }, [session.status])
 

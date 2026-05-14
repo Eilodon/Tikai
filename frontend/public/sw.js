@@ -29,7 +29,7 @@
  *   Format: "tikai-v{MAJOR}.{MINOR}.{PATCH}"
  */
 
-const CACHE_VERSION = "tikai-v2.0.1"   // ← bump this on every deploy
+const CACHE_VERSION = self.__APP_VERSION__ || "tikai-v2.0.2"
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const PAGES_CACHE = `${CACHE_VERSION}-pages`
 

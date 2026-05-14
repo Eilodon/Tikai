@@ -140,6 +140,49 @@ export interface ShopResponse {
   shop_name: string
   subscription_tier: string
   fee_config_version: string
+  trial_expires_at?: string | null
+}
+
+export interface FeeScheduleResponse {
+  version: string
+  platform_commission_rate: string
+  transaction_fee_rate: string
+  order_processing_fee_per_order: string
+}
+
+export interface CampaignSKUInput {
+  sku_id: string
+  planned_units: number
+  price_change_pct?: string | null
+  affiliate_rate?: string | null
+  voucher_rate?: string | null
+}
+
+export interface CampaignSKUResult {
+  sku_id: string
+  sku_name: string
+  planned_units: number
+  current_net_revenue: string
+  simulated_net_revenue: string
+  net_revenue_delta: string
+  current_margin: string | null
+  simulated_margin: string | null
+  simulated_margin_pct: string | null
+  verdict: string
+}
+
+export interface CampaignSimulateResponse {
+  snapshot_id: string
+  fee_config_version: string
+  skus: CampaignSKUResult[]
+  portfolio: {
+    total_current_net_revenue: string
+    total_simulated_net_revenue: string
+    total_net_revenue_delta: string
+    total_current_margin: string | null
+    total_simulated_margin: string | null
+    total_margin_delta: string | null
+  }
 }
 
 export interface UpdateShopRequest {
@@ -425,6 +468,9 @@ export const publicToolsApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  getFeeSchedule: () =>
+    request<FeeScheduleResponse>("/v1/tools/fee-schedule/public"),
 }
 
 export const toolsApi = {
@@ -437,6 +483,13 @@ export const toolsApi = {
 
   simulate: (token: string, data: SimulateRequest) =>
     request<SimulationResult>("/v1/tools/simulate", {
+      method: "POST",
+      body: JSON.stringify(data),
+      token,
+    }),
+
+  simulateCampaign: (token: string, data: { snapshot_id: string; skus: CampaignSKUInput[] }) =>
+    request<CampaignSimulateResponse>("/v1/tools/simulate-campaign", {
       method: "POST",
       body: JSON.stringify(data),
       token,

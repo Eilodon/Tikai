@@ -53,10 +53,13 @@ async def create_shop(
                     }}
                 )
 
+    from datetime import datetime, timedelta, timezone
     shop = Shop(
         owner_id=current_user.id,
         shop_name=body.shop_name,
         tiktok_shop_id=body.tiktok_shop_id,
+        subscription_tier="pro_trial",
+        trial_expires_at=datetime.now(timezone.utc) + timedelta(days=14),
     )
     db.add(shop)
     await db.flush()
@@ -133,4 +136,19 @@ async def update_notification_settings(
         shop.email_digest_enabled = body.email_digest_enabled
     await db.flush()
     return ShopResponse.model_validate(shop)
+
+
+class PushSubscriptionRequest(BaseModel):
+    subscription: dict  # Web Push PushSubscription JSON from browser
+
+
+@router.post("/shops/me/push-subscription", status_code=204)
+async def save_push_subscription(
+    body: PushSubscriptionRequest,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Save browser Web Push subscription for this shop."""
+    shop.push_subscription_json = body.subscription
+    await db.flush()
 

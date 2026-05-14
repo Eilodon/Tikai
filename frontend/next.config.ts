@@ -1,8 +1,18 @@
 import type { NextConfig } from "next"
+import webpack from "webpack"
 
 const nextConfig: NextConfig = {
   experimental: {
     typedRoutes: true,
+  },
+  webpack(config) {
+    const version = process.env.npm_package_version || "2.0.2"
+    config.plugins.push(
+      new webpack.DefinePlugin({
+        "self.__APP_VERSION__": JSON.stringify(`tikai-v${version}`),
+      })
+    )
+    return config
   },
   // F-3-05: Security headers for a financial SaaS app
   async headers() {

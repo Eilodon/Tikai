@@ -19,6 +19,25 @@ import { ActionCard } from "@/components/actions/ActionCard"
 import { WeeklyReceipt } from "@/components/receipt/WeeklyReceipt"
 import { SkeletonCard } from "@/components/common/MoneyDisplay"
 import { WowScreen } from "@/components/insights/WowScreen"
+import { WowInsightBanner } from "@/components/insights/WowInsightBanner"
+
+function CollapsibleSection({
+  title, defaultOpen = false, children,
+}: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="border rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-5 py-3.5 bg-white hover:bg-gray-50 transition-colors text-left"
+      >
+        <span className="font-semibold text-sm text-gray-800">{title}</span>
+        <span className="text-gray-400 text-xs">{open ? "▲ thu gọn" : "▼ mở rộng"}</span>
+      </button>
+      {open && <div className="border-t">{children}</div>}
+    </div>
+  )
+}
 
 export default function OverviewPage() {
   const { data: insight, isLoading: insightLoading, error: insightError } = useLatestInsight()
@@ -127,6 +146,7 @@ export default function OverviewPage() {
         )}
       </div>
 
+      <WowInsightBanner insight={insight} />
       <PLSummary insight={insight} />
       <LeakList leaks={insight.top_leaks} />
 
@@ -149,13 +169,35 @@ export default function OverviewPage() {
         </div>
       )}
 
-      <SKUTable insight={insight} />
+      {(() => {
+        const criticalCount = insight.top_skus.filter(s => s.health_status === "critical").length
+        const losingCount = insight.top_creators.filter(c => c.performance_label === "losing").length
+        return (
+          <>
+            <CollapsibleSection
+              title={criticalCount > 0 ? `SKUs (${criticalCount} critical cần xử lý)` : "Top SKUs"}
+              defaultOpen={criticalCount > 0}
+            >
+              <SKUTable insight={insight} />
+            </CollapsibleSection>
 
-      <CreatorTable insight={insight} />
+            <CollapsibleSection
+              title={losingCount > 0 ? `Creators (${losingCount} đang lỗ)` : "Creators"}
+              defaultOpen={losingCount > 0}
+            >
+              <CreatorTable insight={insight} />
+            </CollapsibleSection>
 
-      <CashFlowTimeline insight={insight} />
+            <CollapsibleSection title="Dòng tiền 14–30 ngày tới" defaultOpen={false}>
+              <CashFlowTimeline insight={insight} />
+            </CollapsibleSection>
 
-      <IndustryBenchmark snapshotId={insight.id} />
+            <CollapsibleSection title="Benchmark ngành" defaultOpen={false}>
+              <IndustryBenchmark snapshotId={insight.id} />
+            </CollapsibleSection>
+          </>
+        )
+      })()}
 
       {/* Re-analysis — Pro+ only */}
       {isPro ? (

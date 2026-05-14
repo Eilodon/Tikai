@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,6 +32,13 @@ class Shop(Base, TimestampMixin):
     email_digest_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+
+    # P4-2: 14-day Pro trial for new signups
+    trial_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # P2-3: Web Push subscription object from browser Push API
+    push_subscription_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     import_sessions: Mapped[list[ImportSession]] = relationship(back_populates="shop")  # noqa: F821

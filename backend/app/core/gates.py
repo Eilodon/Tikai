@@ -23,6 +23,17 @@ class Feature(StrEnum):
 
 
 TIER_GATES: dict[str, dict] = {
+    "pro_trial": {  # P4-2: 14-day trial = pro features
+        Feature.RE_ANALYSIS:         True,
+        Feature.HISTORICAL_WEEKS:    12,
+        Feature.MULTI_SHOP:          3,
+        Feature.ZALO_PUSH:           True,
+        Feature.BENCHMARKS:          True,
+        Feature.CSV_EXPORT:          True,
+        Feature.CREATOR_CRM:         "basic",
+        Feature.SHOPEE_LAZADA:       True,
+        Feature.AI_CALLS_PER_IMPORT: 10,
+    },
     "free": {
         Feature.RE_ANALYSIS:         False,
         Feature.HISTORICAL_WEEKS:    4,

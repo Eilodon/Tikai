@@ -60,6 +60,7 @@ async def get_current_shop(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Shop:
     """INVARIANT: every request that touches business data goes through this."""
+    from datetime import datetime, timezone
     shop = await db.scalar(
         select(Shop).where(
             Shop.owner_id == current_user.id,
@@ -71,4 +72,11 @@ async def get_current_shop(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": {"code": "SHOP_NOT_FOUND", "message": "Chưa có shop. Vui lòng hoàn thành thiết lập."}},
         )
+    # P4-2: auto-expire trial when trial_expires_at is in the past
+    if shop.subscription_tier == "pro_trial":
+        expires = getattr(shop, "trial_expires_at", None)
+        if expires and expires < datetime.now(timezone.utc):
+            shop.subscription_tier = "free"
+            shop.trial_expires_at = None
+            await db.commit()
     return shop

@@ -112,6 +112,22 @@ async def price_recommend(
     }
 
 
+# ── Fee Schedule (public, no auth) ───────────────────────────────────────────
+
+@router.get("/tools/fee-schedule/public")
+async def get_fee_schedule_public(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Return current TikTok Shop fee rates for public calculator. No auth required."""
+    fee_config = await _get_latest_fee_config_data(db)
+    return {
+        "version": fee_config.version,
+        "platform_commission_rate": str(fee_config.platform_commission_rate),
+        "transaction_fee_rate": str(fee_config.transaction_fee_rate),
+        "order_processing_fee_per_order": str(fee_config.order_processing_fee_per_order),
+    }
+
+
 # ── Price Recommender (public, no auth, rate-limited by IP) ──────────────────
 
 @router.post("/tools/price-recommend/public")

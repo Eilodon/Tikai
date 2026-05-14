@@ -1,0 +1,28 @@
+{
+  "shop_name": "Test Shop VN",
+  "period_label": "tuần từ 01/05 đến 07/05",
+  "gmv_total": "186000000",
+  "net_revenue": "122000000",
+  "top_leaks": [
+    {
+      "type": "sku",
+      "id": "SKU-SERUM-A",
+      "name": "Serum A Dưỡng Trắng",
+      "estimated_loss": "5800000",
+      "reason": "voucher_high",
+      "confidence": "high",
+      "can_act_now": true
+    },
+    {
+      "type": "creator",
+      "id": "CR-NGUYEN",
+      "name": "Creator Nguyễn",
+      "estimated_loss": "3100000",
+      "reason": "commission_exceeds_margin",
+      "confidence": "medium",
+      "can_act_now": true
+    }
+  ],
+  "is_net_revenue_mode": false,
+  "cogs_coverage_pct": "0.85"
+}

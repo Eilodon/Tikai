@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.pyc
+
+# Secrets — NEVER bake into image
+.env
+.env.*
+*.env
+
+# Tests (không cần trong production image)
+tests/
+
+# Seed scripts (data ops, không phải app code)
+migrations/seeds/
+
+# Dev tools
+.vscode/
+.idea/
+*.md

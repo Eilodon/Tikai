@@ -1,0 +1,136 @@
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.auth import AuthenticatedUser, get_current_shop, get_current_user
+from app.core.database import get_db
+from app.core.gates import Feature, get_gate_value
+from app.models.shop import Shop
+from app.schemas.shop import CreateShopRequest, ShopResponse, UpdateShopRequest
+
+router = APIRouter()
+
+
+@router.post("/shops/onboarding", status_code=status.HTTP_201_CREATED)
+async def create_shop(
+    body: CreateShopRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ShopResponse:
+    """Create shop for authenticated user. One shop per user (tier-enforced)."""
+    from sqlalchemy import func
+
+    # Count existing active shops for this user
+    shop_count: int = await db.scalar(
+        select(func.count()).select_from(Shop).where(
+            Shop.owner_id == current_user.id,
+            Shop.is_active == True,  # noqa: E712
+        )
+    ) or 0
+
+    if shop_count > 0:
+        # Get any existing shop to check the tier limit
+        any_shop = await db.scalar(select(Shop).where(Shop.owner_id == current_user.id))
+        if any_shop:
+            max_shops: int = int(get_gate_value(any_shop, Feature.MULTI_SHOP) or 1)
+            if shop_count >= max_shops:
+                tier = getattr(any_shop, "subscription_tier", "free") or "free"
+                if tier == "free":
+                    detail_msg = "Gói Free chỉ hỗ trợ 1 shop. Nâng cấp lên Pro (99k/tháng) để thêm tối đa 3 shops."
+                elif tier == "pro":
+                    detail_msg = "Gói Pro hỗ trợ tối đa 3 shops. Nâng cấp lên Business (299k/tháng) để thêm nhiều hơn."
+                else:
+                    detail_msg = f"Đã đạt giới hạn {max_shops} shops của gói hiện tại."
+                raise HTTPException(
+                    status_code=402,
+                    detail={"error": {
+                        "code": "SHOP_LIMIT_REACHED",
+                        "message": detail_msg,
+                        "upgrade_url": "/settings/billing",
+                    }}
+                )
+
+    shop = Shop(
+        owner_id=current_user.id,
+        shop_name=body.shop_name,
+        tiktok_shop_id=body.tiktok_shop_id,
+    )
+    db.add(shop)
+    await db.flush()
+    await db.refresh(shop)
+    return ShopResponse.model_validate(shop)
+
+
+@router.get("/shops/me")
+async def get_shop_me(
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ShopResponse:
+    shop = await db.scalar(
+        select(Shop).where(Shop.owner_id == current_user.id, Shop.is_active == True)  # noqa: E712
+    )
+    if not shop:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": "SHOP_NOT_FOUND", "message": "Chưa có shop. Vui lòng hoàn thành thiết lập."}}
+        )
+    return ShopResponse.model_validate(shop)
+
+
+@router.patch("/shops/me")
+async def update_shop_me(
+    body: UpdateShopRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ShopResponse:
+    shop = await db.scalar(
+        select(Shop).where(Shop.owner_id == current_user.id, Shop.is_active == True)  # noqa: E712
+    )
+    if not shop:
+        raise HTTPException(status_code=404, detail={"error": {"code": "SHOP_NOT_FOUND", "message": "Shop không tồn tại."}})
+
+    if body.shop_name is not None:
+        shop.shop_name = body.shop_name
+    if body.tiktok_shop_id is not None:
+        shop.tiktok_shop_id = body.tiktok_shop_id
+
+    await db.flush()
+    await db.refresh(shop)
+    return ShopResponse.model_validate(shop)
+
+
+class NotificationSettingsRequest(BaseModel):
+    notification_email: str | None = None
+    email_digest_enabled: bool | None = None
+
+
+@router.patch("/shops/me/notifications")
+async def update_notification_settings(
+    body: NotificationSettingsRequest,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ShopResponse:
+    """Update email notification preferences.
+    email_digest_enabled defaults to False until seller opts in.
+    notification_email: seller-preferred email (may differ from auth email).
+    """
+    if body.notification_email is not None:
+        if body.notification_email:
+            # F-05: use email-validator dep (was only checking "@")
+            from email_validator import EmailNotValidError, validate_email
+            try:
+                validate_email(body.notification_email, check_deliverability=False)
+            except EmailNotValidError:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"error": {"code": "INVALID_EMAIL", "message": "Email không hợp lệ."}},
+                )
+        shop.notification_email = body.notification_email or None
+    if body.email_digest_enabled is not None:
+        shop.email_digest_enabled = body.email_digest_enabled
+    await db.flush()
+    return ShopResponse.model_validate(shop)
+

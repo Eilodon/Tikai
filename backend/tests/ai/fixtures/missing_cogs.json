@@ -1,0 +1,19 @@
+{
+  "shop_name": "Test Shop VN",
+  "period_label": "tuần từ 01/05 đến 07/05",
+  "gmv_total": "120000000",
+  "net_revenue": "98000000",
+  "top_leaks": [
+    {
+      "type": "sku",
+      "id": "SKU-001",
+      "name": "Kem Dưỡng Da",
+      "estimated_loss": "0",
+      "reason": "cogs_missing",
+      "confidence": "low",
+      "can_act_now": false
+    }
+  ],
+  "is_net_revenue_mode": true,
+  "cogs_coverage_pct": "0.0"
+}

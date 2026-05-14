@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.errors import register_exception_handlers
-from app.api.v1 import actions, cogs, imports, insights, livestream, shops, weekly_receipts
+from app.api.v1 import actions, cogs, imports, insights, livestream, shops, tools, weekly_receipts
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.logging import configure_logging
@@ -130,6 +130,7 @@ app.include_router(actions.router, prefix="/v1", tags=["actions"])
 app.include_router(cogs.router, prefix="/v1", tags=["cogs"])
 app.include_router(weekly_receipts.router, prefix="/v1", tags=["weekly-receipts"])
 app.include_router(livestream.router, prefix="/v1", tags=["livestream"])
+app.include_router(tools.router, prefix="/v1", tags=["tools"])
 
 # ── Health Endpoints ──────────────────────────────────────────────────────────
 

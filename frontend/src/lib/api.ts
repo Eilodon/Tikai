@@ -194,7 +194,11 @@ export interface SKUSummaryItem {
   order_count: number
   refund_rate: string  // "0.0420" = 4.20%
   margin_pct: string | null  // null if COGS missing
+  margin: string | null
   gmv_rank: number
+  // Feature 2: SKU Health Score
+  health_status: "healthy" | "warning" | "critical"
+  health_reasons: string[]
 }
 
 export interface CreatorSummaryItem {
@@ -206,6 +210,9 @@ export interface CreatorSummaryItem {
   order_count: number
   // FIX P0-4: renamed from 'roi' — use revenue_efficiency in UI label
   revenue_efficiency: string | null  // null if commission=0
+  // Feature 4: Creator Scorecard
+  performance_label: "star" | "break_even" | "losing"
+  suggested_max_commission_rate: string | null
 }
 
 export interface InsightSnapshotResponse {
@@ -220,6 +227,9 @@ export interface InsightSnapshotResponse {
   total_refunds: number
   refund_rate: string     // "0.0420" = 4.20%
   cash_in_14d: string | null
+  // Feature 6: Cash Flow Forecast
+  cash_in_30d: string | null
+  cash_pending_total: string | null
   top_leaks: LeakItem[]
   // FIX P0-6: top_skus and top_creators were missing — SKUTable / CreatorTable used them
   top_skus: SKUSummaryItem[]
@@ -345,6 +355,84 @@ export const livestreamApi = {
 
   delete: (token: string, id: string) =>
     request<void>(`/v1/livestream/${id}`, { method: "DELETE", token }),
+}
+
+// ── Tools API ─────────────────────────────────────────────────────────────────
+
+export interface PriceRecommendRequest {
+  cogs_per_unit: string
+  target_margin_pct: string   // "0.20" = 20%
+  affiliate_rate?: string
+  voucher_rate?: string
+}
+
+export interface PriceRecommendResponse {
+  min_price: string
+  target_margin_pct: string
+  actual_margin_pct: string
+  breakdown: Record<string, string>  // {cogs, platform_commission, ...}
+  warning: string | null
+  fee_config_version: string
+}
+
+export interface SimulateRequest {
+  snapshot_id: string
+  sku_id: string
+  affiliate_rate?: string | null
+  voucher_rate?: string | null
+  price_change_pct?: string | null
+}
+
+export interface SimulationResult {
+  current_net_revenue: string
+  current_margin: string | null
+  current_margin_pct: string | null
+  simulated_net_revenue: string
+  simulated_margin: string | null
+  simulated_margin_pct: string | null
+  net_revenue_delta: string
+  margin_delta: string | null
+  breakeven_extra_orders: number | null
+  verdict: string
+}
+
+export interface BenchmarkComparison {
+  metric: string
+  metric_label: string
+  shop_value: string
+  industry_value: string
+  deviation_pct: string
+  verdict: "better" | "on_par" | "worse"
+  label: string
+  category: string
+  source: string
+}
+
+export interface BenchmarkResponse {
+  category: string
+  comparisons: BenchmarkComparison[]
+}
+
+export const toolsApi = {
+  priceRecommend: (token: string, data: PriceRecommendRequest) =>
+    request<PriceRecommendResponse>("/v1/tools/price-recommend", {
+      method: "POST",
+      body: JSON.stringify(data),
+      token,
+    }),
+
+  simulate: (token: string, data: SimulateRequest) =>
+    request<SimulationResult>("/v1/tools/simulate", {
+      method: "POST",
+      body: JSON.stringify(data),
+      token,
+    }),
+
+  getBenchmark: (token: string, snapshotId: string, category = "other") =>
+    request<BenchmarkResponse>(
+      `/v1/insights/${snapshotId}/benchmark?category=${category}`,
+      { token }
+    ),
 }
 
 /**

@@ -35,6 +35,7 @@ from app.schemas.insight import (
     LeakItem,
     SKUSummaryItem,
 )
+from app.services.benchmarks.industry_data import Category, compare_to_industry
 from app.services.rule_engine import FeeConfigData, build_insight
 from app.services.rule_engine.baselines import CATEGORY_REFUND_BASELINES
 
@@ -90,6 +91,9 @@ def _to_response(snapshot: InsightSnapshot) -> InsightSnapshotResponse:
         total_refunds=snapshot.total_refunds,
         refund_rate=snapshot.refund_rate,
         cash_in_14d=snapshot.cash_in_14d,
+        # Feature 6: Cash Flow Forecast — nullable on old snapshots
+        cash_in_30d=getattr(snapshot, "cash_in_30d", None),
+        cash_pending_total=getattr(snapshot, "cash_pending_total", None),
         top_leaks=_safe_parse(LeakItem, snapshot.top_leaks_json),
         top_skus=_safe_parse(SKUSummaryItem, snapshot.top_skus_json),
         top_creators=_safe_parse(CreatorSummaryItem, snapshot.top_creators_json),  # FIX BUG-C2
@@ -166,6 +170,65 @@ async def get_insight_by_id(
             status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy."}}
         )
     return _to_response(snapshot)
+
+
+@router.get("/insights/{snapshot_id}/benchmark")
+async def get_benchmark(
+    snapshot_id: uuid.UUID,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    category: Category = "other",
+) -> dict:
+    """
+    Feature 5: So sánh chỉ số shop với benchmark ngành.
+    INVARIANT: mỗi comparison có source field rõ ràng.
+    """
+    snapshot = await db.scalar(
+        select(InsightSnapshot).where(
+            InsightSnapshot.id == snapshot_id,
+            InsightSnapshot.shop_id == shop.id,
+        )
+    )
+    if not snapshot:
+        raise HTTPException(
+            404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy snapshot."}},
+        )
+
+    # Compute shop-level margin_pct from top_skus (weighted by GMV)
+    top_skus = _safe_parse(SKUSummaryItem, snapshot.top_skus_json or [])
+    total_gmv = sum(float(s.gmv) for s in top_skus)
+    shop_margin_pct = None
+    if total_gmv > 0:
+        weighted_margin = sum(
+            float(s.margin_pct) * float(s.gmv)
+            for s in top_skus
+            if s.margin_pct is not None
+        )
+        skus_with_margin_gmv = sum(
+            float(s.gmv) for s in top_skus if s.margin_pct is not None
+        )
+        if skus_with_margin_gmv > 0:
+            shop_margin_pct = Decimal(str(weighted_margin / skus_with_margin_gmv))
+
+    # Compute fee burden = (gmv - net_revenue) / gmv
+    gmv_total = snapshot.gmv_total
+    net_revenue = snapshot.net_revenue
+    shop_fee_burden_pct = None
+    if gmv_total and gmv_total > 0:
+        shop_fee_burden_pct = (gmv_total - net_revenue) / gmv_total
+
+    comparisons = compare_to_industry(
+        shop_refund_rate=snapshot.refund_rate,
+        shop_margin_pct=shop_margin_pct,
+        shop_fee_burden_pct=shop_fee_burden_pct,
+        category=category,
+    )
+
+    return {
+        "category": category,
+        "comparisons": [c.model_dump() for c in comparisons],
+    }
 
 
 @router.post("/insights/recompute")
@@ -354,6 +417,8 @@ async def recompute_insight(
 
     settlement = calculate_settlement_forecast(rows, reference_date=base.period_end)
     cash_in_14d = settlement.cash_in_14d if settlement.cash_in_14d > 0 else None
+    cash_in_30d = settlement.cash_in_30d if settlement.cash_in_30d > 0 else None
+    cash_pending_total = settlement.pending_total if settlement.pending_total > 0 else None
 
     new_snapshot = InsightSnapshot(
         shop_id=shop.id,
@@ -366,6 +431,8 @@ async def recompute_insight(
         total_refunds=insight_data.total_refunds,
         refund_rate=insight_data.refund_rate,
         cash_in_14d=cash_in_14d,
+        cash_in_30d=cash_in_30d,
+        cash_pending_total=cash_pending_total,
         top_leaks_json=[
             {
                 "type": leak.type,
@@ -389,6 +456,8 @@ async def recompute_insight(
                 "margin_pct": str(s.margin_pct) if s.margin_pct is not None else None,
                 "margin": str(s.margin) if s.margin is not None else None,
                 "gmv_rank": s.gmv_rank,
+                "health_status": s.health_status,
+                "health_reasons": s.health_reasons,
             }
             for s in insight_data.top_skus
         ],
@@ -402,6 +471,10 @@ async def recompute_insight(
                 "order_count": c.order_count,
                 "revenue_efficiency": str(c.revenue_efficiency)
                 if c.revenue_efficiency is not None
+                else None,
+                "performance_label": c.performance_label,
+                "suggested_max_commission_rate": str(c.suggested_max_commission_rate)
+                if c.suggested_max_commission_rate is not None
                 else None,
             }
             for c in insight_data.top_creators

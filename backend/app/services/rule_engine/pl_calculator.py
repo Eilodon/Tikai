@@ -3,11 +3,14 @@ P&L Calculator — aggregates per SKU and per creator.
 INVARIANT: margin = None khi thiếu COGS. KHÔNG fake về 0.
 """
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Literal
 
 from app.services.parser.base import RawOrderRow
 from app.services.rule_engine.fee_calculator import calculate_net_revenue, safe_divide
+
+SKUHealthStatus = Literal["healthy", "warning", "critical"]
 
 
 @dataclass
@@ -25,6 +28,9 @@ class SKUSummary:
     affiliate_commission: Decimal
     voucher_cost: Decimal
     gmv_rank: int                 # 1 = highest GMV, set after sorting
+    # Feature 2: SKU Health Score
+    health_status: SKUHealthStatus = "healthy"
+    health_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -43,11 +49,54 @@ class CreatorSummary:
     #     the commission paid exceeds what the creator actually generated after fees.
     # Label as "Revenue Efficiency" in UI — NOT "ROI" (true ROI requires COGS + sample cost).
     revenue_efficiency: Decimal | None  # None if commission=0
+    # Feature 4: Creator Scorecard
+    performance_label: Literal["star", "break_even", "losing"] = "break_even"
+    suggested_max_commission_rate: Decimal | None = None
+
+
+def _compute_sku_health(
+    sku: "SKUSummary",
+    baseline_refund_rate: Decimal,
+) -> tuple[SKUHealthStatus, list[str]]:
+    """Classify SKU health. INVARIANT: critical check first, warning only if not critical."""
+    from app.services.rule_engine.baselines import DEFAULT_BASELINE  # avoid circular at module level
+    reasons: list[str] = []
+    status: SKUHealthStatus = "healthy"
+
+    if sku.margin is not None and sku.margin < Decimal("0"):
+        status = "critical"
+        reasons.append(f"Margin âm: {sku.margin:,.0f}đ")
+    if sku.net_revenue < Decimal("0"):
+        status = "critical"
+        reasons.append("Net revenue âm sau phí")
+    if sku.refund_rate > baseline_refund_rate * Decimal("2"):
+        status = "critical"
+        reasons.append(f"Hoàn hàng {sku.refund_rate:.0%} — cao hơn 2× chuẩn ngành")
+
+    if status == "critical":
+        return status, reasons
+
+    if sku.total_cogs is None:
+        status = "warning"
+        reasons.append("Chưa nhập giá vốn — không tính được margin")
+    elif sku.margin_pct is not None and sku.margin_pct < Decimal("0.10"):
+        status = "warning"
+        reasons.append(f"Margin thấp: {sku.margin_pct:.0%}")
+    if sku.refund_rate > baseline_refund_rate * Decimal("1.2"):
+        status = "warning"
+        reasons.append(f"Hoàn hàng {sku.refund_rate:.0%} — trên mức chuẩn")
+    nr = sku.net_revenue
+    if nr > 0 and sku.voucher_cost > nr * Decimal("0.30"):
+        status = "warning"
+        reasons.append(f"Voucher chiếm {sku.voucher_cost / nr:.0%} net revenue")
+
+    return status, reasons
 
 
 def calculate_sku_summaries(
     rows: list[RawOrderRow],
     cogs_map: dict[str, Decimal],  # {sku_id: cogs_per_unit}
+    category_baselines: dict[str, Decimal] | None = None,
 ) -> list[SKUSummary]:
     """
     Group by sku_id, aggregate metrics.
@@ -111,6 +160,13 @@ def calculate_sku_summaries(
     for i, s in enumerate(summaries):
         s.gmv_rank = i + 1
 
+    # Feature 2: Compute health score for each SKU
+    from app.services.rule_engine.baselines import DEFAULT_BASELINE
+    baselines = category_baselines or {}
+    for s in summaries:
+        baseline = baselines.get(s.sku_id, DEFAULT_BASELINE)
+        s.health_status, s.health_reasons = _compute_sku_health(s, baseline)
+
     return summaries
 
 
@@ -149,6 +205,25 @@ def calculate_creator_summaries(rows: list[RawOrderRow]) -> list[CreatorSummary]
         # < 1.0 → creator cost more than they generated after all fees
         revenue_efficiency = safe_divide(net_rev, commission) if commission > 0 else None
 
+        # Feature 4: performance_label based on revenue_efficiency
+        if revenue_efficiency is not None:
+            if revenue_efficiency >= Decimal("2.0"):
+                performance_label = "star"
+            elif revenue_efficiency >= Decimal("1.0"):
+                performance_label = "break_even"
+            else:
+                performance_label = "losing"
+        else:
+            performance_label = "break_even"  # no commission cost → not losing
+
+        # Feature 4: suggested_max_commission_rate = (net_rev / gmv) × 0.8
+        # = max 80% of margin vs GMV as commission, to keep seller profitable
+        gmv = a["gmv"]
+        suggested_max_commission_rate: Decimal | None = None
+        if gmv > 0 and net_rev > 0:
+            margin_ratio = net_rev / gmv
+            suggested_max_commission_rate = (margin_ratio * Decimal("0.8")).quantize(Decimal("0.0001"))
+
         summaries.append(CreatorSummary(
             creator_id=creator_id,
             creator_name=a["creator_name"],
@@ -157,6 +232,8 @@ def calculate_creator_summaries(rows: list[RawOrderRow]) -> list[CreatorSummary]
             total_commission=commission,
             order_count=a["order_count"],
             revenue_efficiency=revenue_efficiency,
+            performance_label=performance_label,
+            suggested_max_commission_rate=suggested_max_commission_rate,
         ))
 
     summaries.sort(key=lambda x: x.attributed_gmv, reverse=True)

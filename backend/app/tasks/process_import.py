@@ -240,6 +240,8 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 reference_date=parse_result.date_range_end,
             )
             cash_in_14d = settlement.cash_in_14d if settlement.cash_in_14d > 0 else None
+            cash_in_30d = settlement.cash_in_30d if settlement.cash_in_30d > 0 else None
+            cash_pending_total = settlement.pending_total if settlement.pending_total > 0 else None
 
             # 9. Save InsightSnapshot
             snapshot = InsightSnapshot(
@@ -253,6 +255,8 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 total_refunds=insight_data.total_refunds,
                 refund_rate=insight_data.refund_rate,
                 cash_in_14d=cash_in_14d,
+                cash_in_30d=cash_in_30d,
+                cash_pending_total=cash_pending_total,
                 top_leaks_json=[
                     {"type": leak.type, "id": leak.id, "name": leak.name,
              "estimated_loss": str(leak.estimated_loss), "reason": leak.reason,
@@ -265,7 +269,9 @@ async def process_import(ctx: dict, session_id: str) -> None:
                      "order_count": s.order_count, "refund_rate": str(s.refund_rate),
                      "margin_pct": str(s.margin_pct) if s.margin_pct is not None else None,
                      "margin": str(s.margin) if s.margin is not None else None,
-                     "gmv_rank": s.gmv_rank}
+                     "gmv_rank": s.gmv_rank,
+                     "health_status": s.health_status,
+                     "health_reasons": s.health_reasons}
                     for s in insight_data.top_skus
                 ],
                 top_creators_json=[
@@ -274,7 +280,10 @@ async def process_import(ctx: dict, session_id: str) -> None:
                      "attributed_net_revenue": str(c.attributed_net_revenue),
                      "total_commission": str(c.total_commission),
                      "order_count": c.order_count,
-                     "revenue_efficiency": str(c.revenue_efficiency) if c.revenue_efficiency is not None else None}
+                     "revenue_efficiency": str(c.revenue_efficiency) if c.revenue_efficiency is not None else None,
+                     "performance_label": c.performance_label,
+                     "suggested_max_commission_rate": str(c.suggested_max_commission_rate)
+                         if c.suggested_max_commission_rate is not None else None}
                     for c in insight_data.top_creators
                 ],
                 action_triggers_json=[

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react"
 import { useShop } from "@/hooks/useApi"
 import { shopsApi, cogsApi, insightsApi, notificationsApi, COGSItemResponse } from "@/lib/api"
 import { getAuthToken } from "@/lib/supabase"
+import { PriceRecommender } from "@/components/insights/PriceRecommender"
 
 // ── COGS Table ────────────────────────────────────────────────────────────────
 
@@ -325,6 +326,15 @@ export default function SettingsPage() {
           Nhập giá vốn per SKU để tính margin chính xác. Không có giá vốn, Tikai chỉ hiển thị Net Revenue.
         </p>
         <COGSTable token={token} />
+      </div>
+
+      {/* Price Recommender */}
+      <div className="bg-white rounded-xl border p-6">
+        <h2 className="font-semibold mb-1">Tính giá bán tối thiểu</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Nhập giá vốn và margin mục tiêu — Tikai tính ngược ra giá bán tối thiểu sau khi trừ hết phí sàn, affiliate, voucher.
+        </p>
+        <PriceRecommender />
       </div>
 
       {/* Email Notifications */}

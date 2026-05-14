@@ -41,6 +41,9 @@ class InsightSnapshot(Base, TimestampMixin):
     total_refunds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     refund_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)  # 0-1
     cash_in_14d: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    # Feature 6: Cash Flow Forecast — additional settlement fields
+    cash_in_30d: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    cash_pending_total: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
 
     # Rule Engine JSON outputs
     top_leaks_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)

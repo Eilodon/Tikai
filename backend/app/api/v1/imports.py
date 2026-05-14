@@ -97,8 +97,12 @@ async def upload_import(
 
     # v2.0.0: Quick platform detection from headers — no full parse needed
     # Only reads first row for header extraction (fast, <1ms)
+    # BUG-5 FIX: xlsx files with unknown detection could be Shopee — require gate
+    # to prevent Free/Pro users bypassing the Business-tier guard via malformed headers.
     _detected_platform = _quick_detect_platform(file_bytes, ext)
-    if _detected_platform == "shopee":
+    if _detected_platform == "shopee" or (
+        _detected_platform == "unknown" and ext in {".xlsx", ".xls"}
+    ):
         from app.core.gates import Feature, require_feature
         require_feature(shop, Feature.SHOPEE_LAZADA)
 

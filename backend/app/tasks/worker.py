@@ -109,13 +109,19 @@ async def run_weekly_receipts(ctx: dict) -> None:
                     skipped += 1
                     continue
 
+                _subscription_cost_map = {
+                    "free":     Decimal("0"),
+                    "pro":      Decimal("99000"),
+                    "business": Decimal("299000"),
+                }
+                _tier = getattr(shop, "subscription_tier", "free") or "free"
                 receipt_input = WeeklyReceiptInput(
                     shop_name=shop.shop_name,
                     period_label=week_label,
                     actions_completed=completed,
                     total_confirmed_saved=total_confirmed,
                     total_estimated_saved=total_estimated,
-                    subscription_cost_vnd=Decimal("99000"),
+                    subscription_cost_vnd=_subscription_cost_map.get(_tier, Decimal("0")),
                 )
                 receipt_output = await run_weekly_receipt(receipt_input, str(shop.id))
 
@@ -134,11 +140,11 @@ async def run_weekly_receipts(ctx: dict) -> None:
                 )
                 db.add(receipt)
                 await db.flush()
+                await db.commit()
                 total += 1
 
                 # ── Email digest (v1.2.0) ────────────────────────────────
                 # Fire-and-forget: NEVER let email failure block receipt creation.
-                # We commit the receipt first, then send email.
                 # email_sent / email_sent_at are tracking-only — not critical path.
                 if shop.email_digest_enabled and shop.notification_email:
                     sent = await send_weekly_digest(
@@ -157,6 +163,7 @@ async def run_weekly_receipts(ctx: dict) -> None:
                         receipt.email_sent = True
                         receipt.email_sent_at = datetime.now(UTC)
                         await db.flush()
+                        await db.commit()
                     log.info(
                         "weekly_receipts.email_dispatch",
                         shop_id=str(shop.id),

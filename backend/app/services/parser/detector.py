@@ -44,14 +44,16 @@ COLUMN_FINGERPRINTS_VI: dict[str, list[str]] = {
         "mã thanh toán", "số tiền thanh toán",
         "mã đơn hàng", "thời gian thanh toán",
     ],
-    # Shopee VI fingerprints (same as EN variant — both are VI column headers)
+    # Shopee EN export with VI UI labels — shares base columns with _vi variant
     "shopee_order_export": [
         "mã đơn hàng", "tên sản phẩm", "mã sku",
         "giá sản phẩm", "trạng thái đơn hàng", "ngày đặt hàng",
     ],
+    # Shopee VN export — uses Shopee-VN-specific column names not present in EN variant
     "shopee_order_export_vi": [
-        "mã đơn hàng", "tên sản phẩm", "mã sku",
-        "giá sản phẩm", "trạng thái đơn hàng", "ngày đặt hàng",
+        "mã đơn hàng", "tên sản phẩm", "mã sku sản phẩm",
+        "giá bán", "trạng thái đơn hàng", "ngày đặt hàng",
+        "phí hoa hồng",
     ],
 }
 

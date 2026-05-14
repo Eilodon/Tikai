@@ -20,7 +20,7 @@ class Shop(Base, TimestampMixin):
     tiktok_shop_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     subscription_tier: Mapped[str] = mapped_column(String(20), default="free", nullable=False)
     fee_config_version: Mapped[str] = mapped_column(
-        String(50), default="2024-VN-v1", nullable=False
+        String(50), default="2026-VN-v3", nullable=False
     )
     cogs_map: Mapped[dict] = mapped_column(JSONB, nullable=True, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

@@ -32,7 +32,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
-from app.core.gates import get_ai_calls_limit  # v1.0.0: top-level import (was inside function)
 from app.core.storage import download_file as storage_download
 from app.models.ai_action import AIAction
 from app.models.fee_config import FeeConfig
@@ -100,6 +99,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                     "missing": parse_result.missing_columns,
                 }
                 await db.flush()
+                await db.commit()
                 return
 
             # 4. Save orders (bulk)
@@ -191,6 +191,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                     "fee_config_version": shop.fee_config_version,
                 }
                 await db.flush()
+                await db.commit()
                 return
 
             # v1.0.0: Pass transaction_fee_rate + order_processing_fee_per_order
@@ -344,6 +345,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
             await db.flush()
             session.status = "completed"
             await db.flush()
+            await db.commit()
 
             log.info(
                 "process_import.completed",
@@ -365,6 +367,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                     "internal_detail": str(e)[:200],
                 }
                 await db.flush()
+                await db.commit()
             except Exception as flush_err:
                 log.error("process_import.flush_failed", error=str(flush_err))
             # Best-effort: clean up the uploaded file from storage when import fails.

@@ -54,7 +54,7 @@ TIER_GATES: dict[str, dict] = {
         Feature.CSV_EXPORT:          True,
         Feature.CREATOR_CRM:         "full",
         Feature.SHOPEE_LAZADA:       True,
-        Feature.AI_CALLS_PER_IMPORT: 999,
+        Feature.AI_CALLS_PER_IMPORT: 15,
     },
 }
 

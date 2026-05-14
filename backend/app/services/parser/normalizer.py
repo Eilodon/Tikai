@@ -97,7 +97,7 @@ SHOPEE_COLUMN_ALIASES: dict[str, list[str]] = {
     ],
     "platform_commission": [
         "Commission Fee", "Seller Commission",
-        "Phí hoa hồng", "Transaction Fee",
+        "Phí hoa hồng",
     ],
     "affiliate_commission": [
         "Affiliate Commission Fee", "Shopee Affiliate Commission",

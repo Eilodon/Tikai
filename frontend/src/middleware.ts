@@ -9,6 +9,7 @@ const PUBLIC_ROUTES = [
   "/tinh-phi-tiktok",
   "/auth/callback",
   "/auth/reset-password",
+  "/offline",
 ]
 
 export async function middleware(request: NextRequest) {

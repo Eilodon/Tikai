@@ -246,6 +246,7 @@ export interface InsightSnapshotResponse {
   // NEW: period metadata for incomplete-week warning
   days_in_period: number
   is_partial_period: boolean
+  is_first_import: boolean
   created_at: string
 }
 
@@ -416,6 +417,14 @@ export interface BenchmarkComparison {
 export interface BenchmarkResponse {
   category: string
   comparisons: BenchmarkComparison[]
+}
+
+export const publicToolsApi = {
+  priceRecommend: (data: PriceRecommendRequest) =>
+    request<PriceRecommendResponse>("/v1/tools/price-recommend/public", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 }
 
 export const toolsApi = {

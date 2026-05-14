@@ -18,6 +18,7 @@ import { IndustryBenchmark } from "@/components/insights/IndustryBenchmark"
 import { ActionCard } from "@/components/actions/ActionCard"
 import { WeeklyReceipt } from "@/components/receipt/WeeklyReceipt"
 import { SkeletonCard } from "@/components/common/MoneyDisplay"
+import { WowScreen } from "@/components/insights/WowScreen"
 
 export default function OverviewPage() {
   const { data: insight, isLoading: insightLoading, error: insightError } = useLatestInsight()
@@ -40,6 +41,12 @@ export default function OverviewPage() {
         </a>
       </div>
     )
+  }
+
+  // Show WowScreen on first import until user dismisses it
+  const [wowDismissed, setWowDismissed] = useState(false)
+  if (insight.is_first_import && !wowDismissed) {
+    return <WowScreen insight={insight} onContinue={() => setWowDismissed(true)} />
   }
 
   const pendingActions = actionsData?.items?.filter((a) => a.status === "pending") ?? []

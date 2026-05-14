@@ -18,7 +18,7 @@ from typing import Annotated
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_shop
@@ -76,7 +76,7 @@ def _safe_parse(schema_class, items: list) -> list:
     return result
 
 
-def _to_response(snapshot: InsightSnapshot) -> InsightSnapshotResponse:
+def _to_response(snapshot: InsightSnapshot, is_first_import: bool = False) -> InsightSnapshotResponse:
     days_in_period = 7
     is_partial_period = False
     if snapshot.period_start and snapshot.period_end:
@@ -107,6 +107,7 @@ def _to_response(snapshot: InsightSnapshot) -> InsightSnapshotResponse:
         is_net_revenue_mode=snapshot.is_net_revenue_mode,
         days_in_period=days_in_period,
         is_partial_period=is_partial_period,
+        is_first_import=is_first_import,
         created_at=snapshot.created_at,
     )
 
@@ -132,7 +133,11 @@ async def get_latest_insight(
                 }
             },
         )
-    return _to_response(snapshot)
+    total = await db.scalar(
+        select(func.count()).select_from(InsightSnapshot)
+        .where(InsightSnapshot.shop_id == shop.id)
+    ) or 0
+    return _to_response(snapshot, is_first_import=(total == 1))
 
 
 @router.get("/insights/history")

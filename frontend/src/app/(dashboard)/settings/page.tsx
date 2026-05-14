@@ -350,6 +350,45 @@ export default function SettingsPage() {
         />
       </div>
 
+      {/* Billing */}
+      <div className="bg-white rounded-xl border p-6">
+        <h2 className="font-semibold mb-1">Gói đăng ký</h2>
+        <div className="flex items-center justify-between py-3 border-b">
+          <span className="text-sm text-gray-600">Gói hiện tại</span>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            shop?.subscription_tier === "business" ? "bg-purple-100 text-purple-700" :
+            shop?.subscription_tier === "pro" ? "bg-blue-100 text-blue-700" :
+            "bg-gray-100 text-gray-600"}`}>
+            {shop?.subscription_tier === "business" ? "Business" :
+             shop?.subscription_tier === "pro" ? "Pro" : "Free"}
+          </span>
+        </div>
+        {(!shop?.subscription_tier || shop.subscription_tier === "free") && (
+          <div className="mt-4 space-y-3">
+            <ul className="text-sm text-gray-600 space-y-1.5">
+              {[
+                "Tính lại P&L sau khi cập nhật COGS",
+                "Lịch sử 12 tuần (thay vì 4 tuần)",
+                "Benchmark ngành",
+                "Xuất CSV",
+                "Nhận báo cáo Zalo hàng tuần",
+              ].map((f) => (
+                <li key={f} className="flex items-center gap-2">
+                  <span className="text-blue-500 font-bold">✓</span> {f}
+                </li>
+              ))}
+            </ul>
+            <a
+              href="mailto:hi@tikai.vn?subject=Nâng cấp Pro — 99k/tháng"
+              className="block w-full text-center bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              Nâng cấp Pro — 99k/tháng →
+            </a>
+            <p className="text-xs text-gray-400 text-center">Gửi email, team sẽ kích hoạt trong 24h.</p>
+          </div>
+        )}
+      </div>
+
       {/* Fee Config */}
       <div className="bg-white rounded-xl border p-6">
         <h2 className="font-semibold mb-1">Cấu hình phí</h2>

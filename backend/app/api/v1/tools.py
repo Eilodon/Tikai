@@ -7,13 +7,14 @@ from decimal import Decimal
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_shop
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.models.fee_config import FeeConfig
 from app.models.insight_snapshot import InsightSnapshot
 from app.models.shop import Shop
@@ -101,6 +102,42 @@ async def price_recommend(
         target_margin=str(body.target_margin_pct),
         min_price=str(result.min_price),
     )
+    return {
+        "min_price": str(result.min_price),
+        "target_margin_pct": str(result.target_margin_pct),
+        "actual_margin_pct": str(result.actual_margin_pct),
+        "breakdown": {k: str(v) for k, v in result.breakdown.items()},
+        "warning": result.warning,
+        "fee_config_version": fee_config.version,
+    }
+
+
+# ── Price Recommender (public, no auth, rate-limited by IP) ──────────────────
+
+@router.post("/tools/price-recommend/public")
+@limiter.limit("30/hour")
+async def price_recommend_public(
+    request: Request,
+    body: PriceRecommendRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Public price calculator — no auth required. Rate limited to 30 calls/hour/IP."""
+    fee_config = await _get_latest_fee_config_data(db)
+    try:
+        result = recommend_price(
+            cogs_per_unit=body.cogs_per_unit,
+            target_margin_pct=body.target_margin_pct,
+            platform_commission_rate=fee_config.platform_commission_rate,
+            transaction_fee_rate=fee_config.transaction_fee_rate,
+            order_processing_fee=fee_config.order_processing_fee_per_order,
+            affiliate_rate=body.affiliate_rate,
+            voucher_rate=body.voucher_rate,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            422,
+            detail={"error": {"code": "INFEASIBLE_MARGIN", "message": str(e)}},
+        )
     return {
         "min_price": str(result.min_price),
         "target_margin_pct": str(result.target_margin_pct),

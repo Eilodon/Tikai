@@ -179,6 +179,10 @@ async def verify_action_impact(ctx: dict, action_id: str) -> None:
                 "attribution_method": "metric_specific",  # audit trail
             }
             await db.flush()
+            # ADR-ASYNC-001: async_sessionmaker with autocommit=False does NOT auto-commit
+            # on context-manager exit — it only closes (which triggers ROLLBACK).
+            # Without this line every confirm was a silent no-op since this feature shipped.
+            await db.commit()
             log.info(
                 "verify_impact.confirmed",
                 action_id=action_id,

@@ -456,6 +456,8 @@ async def recompute_insight(
                 "margin_pct": str(s.margin_pct) if s.margin_pct is not None else None,
                 "margin": str(s.margin) if s.margin is not None else None,
                 "gmv_rank": s.gmv_rank,
+                "affiliate_commission": str(s.affiliate_commission),
+                "voucher_cost": str(s.voucher_cost),
                 "health_status": s.health_status,
                 "health_reasons": s.health_reasons,
             }

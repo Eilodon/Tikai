@@ -196,6 +196,9 @@ export interface SKUSummaryItem {
   margin_pct: string | null  // null if COGS missing
   margin: string | null
   gmv_rank: number
+  // Aggregated cost components — used by What-If Simulator
+  affiliate_commission: string
+  voucher_cost: string
   // Feature 2: SKU Health Score
   health_status: "healthy" | "warning" | "critical"
   health_reasons: string[]

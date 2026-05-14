@@ -59,7 +59,6 @@ def _compute_sku_health(
     baseline_refund_rate: Decimal,
 ) -> tuple[SKUHealthStatus, list[str]]:
     """Classify SKU health. INVARIANT: critical check first, warning only if not critical."""
-    from app.services.rule_engine.baselines import DEFAULT_BASELINE  # avoid circular at module level
     reasons: list[str] = []
     status: SKUHealthStatus = "healthy"
 

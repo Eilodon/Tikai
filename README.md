@@ -2,7 +2,7 @@
 
 AI-powered P&L analytics for Vietnamese TikTok Shop sellers. Tikai parses platform CSV exports, calculates true profitability per SKU and creator, detects revenue leaks, and generates actionable Vietnamese-language recommendations backed by Claude.
 
-**Version:** 2.0.2 | **Stack:** FastAPI · Next.js 15 · PostgreSQL · Redis · Anthropic API
+**Version:** 2.1.0 | **Stack:** FastAPI · Next.js 15 · PostgreSQL · Redis · Anthropic API
 
 ---
 
@@ -16,6 +16,12 @@ AI-powered P&L analytics for Vietnamese TikTok Shop sellers. Tikai parses platfo
 - **Settlement forecast** — Cash inflow projection over the next 14 days
 - **COGS management** — Bulk upsert cost-of-goods to unlock true margin calculation
 - **Recompute** — Re-run Rule Engine on existing orders after COGS update (Pro+)
+- **SKU Health Score** — Three-tier health classification (critical / warning / healthy) with drill-down reasons per SKU
+- **Creator Scorecard** — Star / break-even / losing labels with suggested max commission rate for each creator
+- **What-If Simulator** — In-memory P&L delta for a single SKU: change affiliate rate, voucher rate, or price ±30% and see the net revenue and margin impact instantly
+- **Price Recommender** — Reverse P&L: enter COGS + target margin → get minimum viable selling price with full cost breakdown
+- **Industry Benchmark** — Compare shop metrics (refund rate, margin, fee burden) against YouNet ECI 2025 benchmarks for 7 TikTok Shop categories
+- **Cash Flow Timeline** — Dashboard panel showing settlement cash inflows for the next 14 / 30 days plus pending amount
 
 ---
 
@@ -50,14 +56,21 @@ Frontend (Next.js 15)
 Backend (FastAPI)
   /v1/imports      — upload CSV/XLSX → enqueue ARQ job
   /v1/insights     — latest snapshot, history, recompute
+  /v1/insights/{id}/benchmark  — industry benchmark comparison
   /v1/actions      — list, complete, dismiss AI recommendations
   /v1/shops        — profile, COGS, notification settings
+  /v1/tools/price-recommend  — reverse P&L: COGS + margin → min price
+  /v1/tools/simulate         — what-if P&L delta for 1 SKU (no DB writes)
   /v1/weekly-receipts
   /v1/livestream
         │
         ├── Rule Engine
         │     fee_calculator · pl_calculator · leak_detector
         │     action_rules · settlement_calc · baselines
+        │     price_recommender · simulator
+        │
+        ├── Benchmarks
+        │     industry_data (YouNet ECI 2025, 7 categories)
         │
         ├── AI Services (5 functions, all with sanitize→call→validate→fallback)
         │     import_rescue · aha_narrator · action_coach
@@ -278,6 +291,7 @@ alembic revision --autogenerate -m "add_column_x"
 
 | Version | Summary |
 |---|---|
+| 2.1.0 | 6 new analytics features: SKU Health Score, Creator Scorecard, What-If Simulator, Price Recommender, Industry Benchmark, Cash Flow Timeline. New `/v1/tools/*` API, migration 0008 for cash flow columns. |
 | 2.0.2 | Security hardening (XFF rate limit, IDOR guard, PII stripping), architectural fixes (connection pool, SQLAlchemy 2.x session lifecycle), financial logic fixes (margin VND vs ratio, COGS key normalization), AI safety (injection patterns, startup checks), async correctness (missing db.commit in verify_action_impact) |
 | 2.0.1 | Shopee platform support, transaction_fee + order_processing_fee fields |
 | 2.0.0 | Initial production release |

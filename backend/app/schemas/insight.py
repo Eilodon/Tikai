@@ -57,6 +57,9 @@ class SKUSummaryItem(BaseModel):
     margin_pct: Decimal | None  # None if COGS missing — ratio relative to GMV
     margin: Decimal | None = None  # absolute VND (net_revenue - COGS); None if COGS missing
     gmv_rank: int
+    # Aggregated cost components — needed by What-If Simulator
+    affiliate_commission: MoneyVND = Decimal("0")
+    voucher_cost: MoneyVND = Decimal("0")
     # Feature 2: SKU Health Score
     health_status: Literal["healthy", "warning", "critical"] = "healthy"
     health_reasons: list[str] = []

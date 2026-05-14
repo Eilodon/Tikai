@@ -2,6 +2,97 @@
 
 ---
 
+# 🚀 Tikai v2.1.0 — Analytics Suite
+> 6 new analytical features that turn raw P&L numbers into actionable seller intelligence.
+> **Migration required:** `alembic upgrade head` applies `0008_add_cash_flow_fields`.
+> Zero breaking changes to existing API contracts — all new fields have safe defaults.
+
+## Feature 1 — Price Recommender
+**Files:** `backend/app/services/rule_engine/price_recommender.py`, `backend/app/api/v1/tools.py`
+
+`POST /v1/tools/price-recommend` — Reverse P&L calculator: enter COGS per unit + desired margin → get the minimum viable selling price.
+- Formula: `price = (COGS + fixed_fees) / (1 - sum_of_rate_deductions)`
+- Platform commission + transaction fee pulled from latest `FeeConfig` automatically
+- Configurable affiliate rate (default 10%) and voucher rate (default 5%)
+- Returns full cost breakdown (COGS, platform fee, transaction fee, affiliate, voucher, margin)
+- Raises `INFEASIBLE_MARGIN (422)` when total rate deductions ≥ 100%
+
+## Feature 2 — SKU Health Score
+**Files:** `backend/app/services/rule_engine/pl_calculator.py`, `backend/app/schemas/insight.py`
+
+Every SKU in `top_skus` now carries a `health_status` (critical / warning / healthy) with human-readable `health_reasons`.
+
+Critical triggers (checked first):
+- Negative margin
+- Negative net revenue after fees
+- Refund rate > 2× industry baseline
+
+Warning triggers (only if not critical):
+- Missing COGS (can't compute margin)
+- Margin < 10%
+- Refund rate > 1.2× baseline
+- Voucher cost > 30% of net revenue
+
+Frontend: `HealthCell` component in `SKUTable` shows color-coded icon; click to expand reason list. Filter tabs let sellers quickly isolate critical / warning SKUs.
+
+## Feature 3 — What-If Simulator
+**Files:** `backend/app/services/rule_engine/simulator.py`, `backend/app/api/v1/tools.py`
+
+`POST /v1/tools/simulate` — Re-run P&L for one SKU with hypothetical parameters.
+- Adjustable: affiliate rate, voucher rate, price change (±30%)
+- Pure in-memory computation — **no DB writes, no AI calls**
+- Returns: before/after net revenue + margin, delta, verdict string, breakeven extra orders
+- Frontend: `WhatIfPanel` overlay modal triggered from any row in `SKUTable`
+
+Bug fixed: `affiliate_commission` and `voucher_cost` are now serialized into `top_skus_json` so the simulator uses actual snapshot values as the baseline (not zero).
+
+## Feature 4 — Creator Scorecard
+**Files:** `backend/app/services/rule_engine/pl_calculator.py`, `backend/app/schemas/insight.py`
+
+Every creator in `top_creators` now carries:
+- `performance_label`: `star` (efficiency ≥ 2.0) / `break_even` (≥ 1.0) / `losing` (< 1.0)
+- `suggested_max_commission_rate`: `(net_revenue / gmv) × 0.8` — the highest commission rate that still leaves 20% buffer
+
+Frontend: `CreatorTable` leaderboard with color-coded badges and commission warning for losing creators.
+
+## Feature 5 — Industry Benchmark
+**Files:** `backend/app/services/benchmarks/industry_data.py`, `backend/app/api/v1/insights.py`
+
+`GET /v1/insights/{id}/benchmark?category=fashion` — Compare shop vs industry.
+- Source: Metric.vn / YouNet ECI 2025 — 7 TikTok Shop categories (fashion, beauty, food, electronics, home, baby, other)
+- Metrics compared: refund rate, margin %, fee burden %
+- Returns `BenchmarkComparison` list with `shop_value`, `industry_value`, `delta_pct`, `assessment` (above / on_par / below / no_data)
+- Frontend: `IndustryBenchmark` component with category selector and color-coded comparison table
+
+## Feature 6 — Cash Flow Timeline
+**Files:** `backend/app/models/insight_snapshot.py`, `backend/migrations/versions/0008_add_cash_flow_fields.py`, `backend/app/schemas/insight.py`
+
+New columns on `insight_snapshots`: `cash_in_30d` (Numeric 20,4) and `cash_pending_total` (Numeric 20,4).
+- Computed by `settlement_calc.py` (already existed) and stored by `process_import` + `recompute`
+- Exposed on `InsightSnapshotResponse` with `null` fallback for old snapshots
+- Frontend: `CashFlowTimeline` progress-bar panel on Overview page
+
+## Deploy Checklist — v2.0.x → v2.1.0
+
+```bash
+# 1. Run migration
+alembic upgrade head   # applies 0008_add_cash_flow_fields
+
+# 2. Deploy backend + worker
+docker-compose up -d --build
+
+# 3. Verify new columns
+psql $DATABASE_URL -c "\d insight_snapshots" | grep cash
+
+# 4. Smoke test
+curl -H "Authorization: Bearer $TOKEN" "$API_URL/v1/tools/price-recommend" \
+  -H "Content-Type: application/json" \
+  -d '{"cogs_per_unit": "50000", "target_margin_pct": "0.20"}'
+# Expected: {"min_price": "...", "breakdown": {...}}
+```
+
+---
+
 # 🐛 Tikai v2.0.1 — Bug Fix Release
 > Code review phát hiện 5 bugs trong v2.0.0. Tất cả đã được fix và có test coverage đầy đủ.
 > **169 tests passing** (164 từ v2.0.0 + 5 test classes mới trong `test_v201_fixes.py`).

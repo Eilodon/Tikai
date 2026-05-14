@@ -67,6 +67,12 @@ async def process_import(ctx: dict, session_id: str) -> None:
         try:
             session.status = "processing"
             await db.flush()
+            # ADR-ARCH-002: commit status=processing BEFORE heavy work.
+            # If ARQ SIGKILL's this job at job_timeout=300s, a flush-only transaction
+            # is rolled back → status stays "pending" → cleanup_stuck_imports never
+            # catches it → seller's session stuck forever in "pending".
+            # After this commit, cleanup_stuck_imports correctly finds it as "processing".
+            await db.commit()
 
             # 1. Download from Supabase Storage
             file_bytes = await storage_download(session.file_path)

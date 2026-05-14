@@ -134,10 +134,8 @@ async def readyz():
 
 @app.get("/health", tags=["ops"], include_in_schema=False)
 async def health():
-    """Legacy health endpoint — kept for backward compat. Prefer /healthz."""
-    return {
-        "status": "ok",
-        "version": APP_VERSION,
-        "rule_engine": settings.rule_engine_version,
-        "environment": settings.environment,
-    }
+    """Legacy health endpoint — kept for backward compat. Prefer /healthz.
+    ADR-SEC-006: removed 'environment' and 'rule_engine' fields — no auth required
+    on this endpoint so exposing them helps attackers fingerprint the stack.
+    """
+    return {"status": "ok", "version": APP_VERSION}

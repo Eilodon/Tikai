@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from app.models.ai_action import AIAction
 from app.models.insight_snapshot import InsightSnapshot
+from app.models.shop import Shop
 
 log = structlog.get_logger()
 
@@ -70,6 +71,23 @@ async def verify_action_impact(ctx: dict, action_id: str) -> None:
             select(AIAction).where(AIAction.id == uuid.UUID(action_id))
         )
         if not action or action.status != "done":
+            return
+
+        # ADR-SEC-002: defense-in-depth — verify the owning shop is still active.
+        # ARQ queue is internal, but if compromised an attacker could enqueue a job
+        # with an action_id belonging to a different shop and tamper its confirmed_delta.
+        shop = await db.scalar(
+            select(Shop).where(
+                Shop.id == action.shop_id,
+                Shop.is_active == True,  # noqa: E712
+            )
+        )
+        if not shop:
+            log.warning(
+                "verify_impact.shop_not_found_or_inactive",
+                action_id=action_id,
+                shop_id=str(action.shop_id),
+            )
             return
 
         baseline_snapshot = await db.scalar(

@@ -141,6 +141,11 @@ SHOPEE_COLUMN_ALIASES: dict[str, list[str]] = {
     "refund_reason_raw": [
         "Return/Refund Reason", "Lý do hoàn hàng",
     ],
+    # Parent SKU for variation→parent COGS cascade (Issue 2).
+    # Separate from sku_id so both parent and variation are preserved.
+    "parent_sku_id": [
+        "Parent SKU Reference No.", "Mã SKU cha",
+    ],
 }
 
 # ── Date formats ──────────────────────────────────────────────────────────────

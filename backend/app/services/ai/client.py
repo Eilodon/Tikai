@@ -76,6 +76,7 @@ async def call_ai(
     function_name: str,
     use_small_model: bool = True,
     max_tokens: int = 1000,
+    tier: str = "free",
 ) -> dict:
     """
     Single AI call with structured output via Pydantic schema.
@@ -88,7 +89,7 @@ async def call_ai(
     Backoff: 0s before attempt 1, 2s before attempt 2.
     (2 attempts total — not adding more since AI budget is the real limiter.)
     """
-    await _check_budget(shop_id)
+    await _check_budget(shop_id, tier)
 
     model = MODEL_SMALL if use_small_model else MODEL_STANDARD
     schema_json = json.dumps(output_schema.model_json_schema(), ensure_ascii=False)
@@ -160,7 +161,7 @@ OUTPUT SCHEMA (return ONLY valid JSON matching this schema, no other text):
     raise ValueError(f"AI call failed after 2 attempts for {function_name}: {last_error}")
 
 
-async def _check_budget(shop_id: str) -> None:
+async def _check_budget(shop_id: str, tier: str = "free") -> None:
     """Pre-call optimistic budget check (non-atomic first gate).
     Atomic enforcement happens in _record_cost via Lua script.
     Fail-open: if Redis is unavailable, allow the call (cost tracked post-call)."""
@@ -171,9 +172,14 @@ async def _check_budget(shop_id: str) -> None:
         raw = await r.hget(key, "total_usd")
         if raw:
             spent = Decimal(str(raw))
-            if spent >= settings.ai_budget_limit:
-                log.warning("ai.budget_exceeded", shop_id=shop_id, spent=str(spent), limit=str(settings.ai_budget_limit))
-                raise ValueError(f"AI budget exceeded for shop {shop_id}")
+            budget = settings.ai_budget_for_tier(tier)
+            if spent >= budget:
+                log.warning(
+                    "ai.budget_exceeded",
+                    shop_id=shop_id, tier=tier,
+                    spent=str(spent), limit=str(budget),
+                )
+                raise ValueError(f"AI budget exceeded for shop {shop_id} (tier={tier})")
     except ValueError:
         raise  # budget exceeded — re-raise
     except Exception as e:

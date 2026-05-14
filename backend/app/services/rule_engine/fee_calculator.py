@@ -11,6 +11,7 @@ v1.0.0 FIXES:
 """
 import dataclasses
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 
 from app.services.parser.base import RawOrderRow
@@ -21,16 +22,16 @@ class FeeConfigData:
     """Lightweight fee config passed to rule engine — no DB model dependency.
 
     v1.0.0: Added transaction_fee_rate and order_processing_fee_per_order.
-    These were added to fee_configs table in migration 0002 but not propagated
-    to this dataclass → estimates never ran → Net Revenue overstated for old exports.
-
-    Default Decimal("0") = backwards-compat when caller doesn't pass them.
+    v2.1.0: Added effective_from/effective_to for per-order date-based config selection
+    (F-1B-01 follow-up: prevents mid-period rate changes from affecting all orders).
     """
     version: str
     platform_commission_rate: Decimal
-    transaction_fee_rate: Decimal = Decimal("0")            # e.g. Decimal("0.06") = 6%
-    order_processing_fee_per_order: Decimal = Decimal("0")  # e.g. Decimal("3000")
+    transaction_fee_rate: Decimal = Decimal("0")
+    order_processing_fee_per_order: Decimal = Decimal("0")
     category_overrides: dict[str, Decimal] = field(default_factory=dict)
+    effective_from: date | None = None  # inclusive lower bound
+    effective_to: date | None = None    # inclusive upper bound; None = current
 
 
 def calculate_net_revenue(row: RawOrderRow) -> Decimal:
@@ -62,8 +63,27 @@ def calculate_net_revenue(row: RawOrderRow) -> Decimal:
     )
 
 
+def select_fee_config_for_date(
+    order_date: date, configs: "list[FeeConfigData]"
+) -> "FeeConfigData":
+    """Pick the FeeConfig effective on order_date.
+
+    Configs must be sorted by effective_from ascending.
+    Iterates newest-first so the most specific match wins.
+    Falls back to the oldest config when no perfect match exists
+    (covers orders before the first recorded fee change).
+    """
+    for cfg in reversed(configs):
+        from_ok = cfg.effective_from is None or cfg.effective_from <= order_date
+        to_ok   = cfg.effective_to   is None or cfg.effective_to   >= order_date
+        if from_ok and to_ok:
+            return cfg
+    return configs[0]
+
+
 def apply_fee_config(
-    rows: list[RawOrderRow], fee_config: FeeConfigData
+    rows: list[RawOrderRow],
+    fee_configs: "list[FeeConfigData] | FeeConfigData",
 ) -> tuple[list[RawOrderRow], list[str]]:
     """
     Cross-check row fees vs fee_config. Estimate missing fees.
@@ -79,10 +99,18 @@ def apply_fee_config(
 
     KHÔNG raise — chỉ note discrepancies.
     """
+    if isinstance(fee_configs, FeeConfigData):
+        fee_configs = [fee_configs]
+    multi_config = len(fee_configs) > 1
+
     updated: list[RawOrderRow] = []
     notes: list[str] = []
 
     for row in rows:
+        fee_config = (
+            select_fee_config_for_date(row.order_date, fee_configs)
+            if multi_config else fee_configs[0]
+        )
         # ── Platform commission estimation ────────────────────────────────────
         if row.gmv > 0 and row.platform_commission == Decimal("0"):
             estimated = row.gmv * fee_config.platform_commission_rate

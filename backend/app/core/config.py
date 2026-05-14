@@ -32,7 +32,13 @@ class Settings(BaseSettings):
 
     # AI
     anthropic_api_key: str
-    # FIX ISSUE-07: use str, convert to Decimal in code to avoid float precision
+    # Per-tier monthly dollar budget caps (str → Decimal to avoid float precision).
+    # Business users get 15 calls/import vs Free's 3 — budget must scale accordingly.
+    # With Haiku ~$0.015/import: Free≈10 imports/month, Pro≈33, Business≈67.
+    ai_max_cost_per_month_usd_free: str = "0.15"
+    ai_max_cost_per_month_usd_pro: str = "0.50"
+    ai_max_cost_per_month_usd_business: str = "1.00"
+    # Legacy flat setting kept for backward compat — use ai_budget_for_tier() instead
     ai_max_cost_per_shop_per_month_usd: str = "0.50"
     ai_max_calls_per_import: int = 3
     ai_narrative_cache_ttl_seconds: int = 3600
@@ -112,7 +118,17 @@ class Settings(BaseSettings):
 
     @property
     def ai_budget_limit(self) -> Decimal:
+        """Legacy flat limit — kept for backward compat. Prefer ai_budget_for_tier()."""
         return Decimal(self.ai_max_cost_per_shop_per_month_usd)
+
+    def ai_budget_for_tier(self, tier: str) -> Decimal:
+        """Return the monthly AI dollar budget for a given subscription tier."""
+        mapping = {
+            "free":     self.ai_max_cost_per_month_usd_free,
+            "pro":      self.ai_max_cost_per_month_usd_pro,
+            "business": self.ai_max_cost_per_month_usd_business,
+        }
+        return Decimal(mapping.get(tier, self.ai_max_cost_per_month_usd_free))
 
 
 @lru_cache

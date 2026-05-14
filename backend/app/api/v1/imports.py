@@ -150,14 +150,16 @@ async def upload_import(
     await db.flush()
     await db.refresh(session)
 
-    # FIX BUG-H3 + MED-V2-8: enqueue with retry; if Redis stays down, mark session failed
-    # AND attempt to delete the orphan storage file to avoid stale uploads
+    # FIX BUG-H3 + MED-V2-8: enqueue with retry; if Redis stays down, mark session failed.
+    # Use session.id as the ARQ job_id — ARQ deduplicates by job_id, so if the frontend
+    # retries the upload before the DB transaction commits and both requests create the
+    # same session (prevented by SHA256 dedup above), only one job enters the queue.
     enqueue_ok = False
     last_enqueue_err = None
     for attempt in range(3):
         try:
             arq = await get_arq_pool()
-            await arq.enqueue_job("process_import", str(session.id))
+            await arq.enqueue_job("process_import", str(session.id), _job_id=str(session.id))
             enqueue_ok = True
             break
         except Exception as e:

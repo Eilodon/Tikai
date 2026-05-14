@@ -14,6 +14,7 @@ from app.services.rule_engine.fee_calculator import (
     apply_fee_config,
     calculate_net_revenue,
     safe_divide,
+    select_fee_config_for_date,
 )
 from app.services.rule_engine.leak_detector import LeakItem, detect_top_leaks
 from app.services.rule_engine.pl_calculator import (
@@ -62,12 +63,12 @@ class InsightData:
 
 def build_insight(
     rows: list[RawOrderRow],
-    fee_config: FeeConfigData,
+    fee_configs: "list[FeeConfigData] | FeeConfigData",
     cogs_map: dict[str, Decimal],
     category_baselines: dict[str, Decimal],
     shop_id: str,
     rule_engine_version: str = "0.1.0",
-    top_n_leaks: int = 3,  # FIX BUG-NM3: from settings, not hardcoded
+    top_n_leaks: int = 3,
 ) -> InsightData:
     """
     Full pipeline:
@@ -78,6 +79,15 @@ def build_insight(
     5. Evaluate action rules
     6. Assemble InsightData
     """
+    if isinstance(fee_configs, FeeConfigData):
+        fee_configs = [fee_configs]
+    # Primary config = most recently effective (last in ascending-sorted list)
+    primary_config = fee_configs[-1]
+    fee_config_version = (
+        "+".join(c.version for c in fee_configs)
+        if len(fee_configs) > 1 else primary_config.version
+    )
+
     if not rows:
         return InsightData(
             shop_id=shop_id,
@@ -90,11 +100,11 @@ def build_insight(
             refund_rate=Decimal("0"),
             cash_in_14d=None,
             rule_engine_version=rule_engine_version,
-            fee_config_version=fee_config.version,
+            fee_config_version=fee_config_version,
         )
 
-    # 1. Fee config
-    rows_with_fees, discrepancy_notes = apply_fee_config(rows, fee_config)
+    # 1. Fee config — per-order selection when multiple configs cover the period
+    rows_with_fees, discrepancy_notes = apply_fee_config(rows, fee_configs)
 
     # 2. SKU summaries (pass category_baselines for health score computation)
     sku_summaries = calculate_sku_summaries(rows_with_fees, cogs_map, category_baselines)
@@ -150,7 +160,7 @@ def build_insight(
         top_creators=creator_summaries[:TOP_CREATORS_SNAPSHOT_LIMIT],
         action_triggers=action_triggers,
         rule_engine_version=rule_engine_version,
-        fee_config_version=fee_config.version,
+        fee_config_version=fee_config_version,
         fee_discrepancy_notes=discrepancy_notes,
         cogs_coverage_pct=cogs_coverage_pct,
         is_net_revenue_mode=is_net_revenue_mode,

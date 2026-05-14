@@ -45,6 +45,7 @@ DEFAULT_DISCLAIMER = (
 async def run_import_rescue(
     input_data: ImportRescueInput,
     shop_id: str,
+    tier: str = "free",
 ) -> ImportRescueOutput:
     """
     Detect file format issues and generate user-friendly rescue message.
@@ -72,6 +73,7 @@ async def run_import_rescue(
             function_name="import_rescue",
             use_small_model=True,
             max_tokens=500,
+            tier=tier,
         )
         return ImportRescueOutput(**result)
     except Exception as e:
@@ -95,6 +97,7 @@ async def run_aha_narrator(
     input_data: AhaNarrativeInput,
     shop_id: str,
     snapshot_id: str,
+    tier: str = "free",
 ) -> AhaNarrativeOutput:
     """Cache-backed narrative generation."""
     cache_key = ai_narrative_cache_key(shop_id, snapshot_id, "aha_narrative")
@@ -121,6 +124,7 @@ async def run_aha_narrator(
             function_name="aha_narrator",
             use_small_model=True,
             max_tokens=400,
+            tier=tier,
         )
         output = AhaNarrativeOutput(**result)
 
@@ -171,6 +175,7 @@ async def run_action_coach(
     input_data: ActionCoachInput,
     shop_id: str,
     snapshot_id: str,
+    tier: str = "free",
 ) -> ActionCoachOutput:
     """Generate action recommendation for one ActionTrigger."""
     # FIX BUG-H7: use entity_id (unique) not entity_name[:20] (can collide between shops)
@@ -198,6 +203,7 @@ async def run_action_coach(
             function_name="action_coach",
             use_small_model=True,
             max_tokens=400,
+            tier=tier,
         )
         output = ActionCoachOutput(**result)
         all_text = f"{output.action_title} {output.why_it_matters} {output.recommended_step}"
@@ -232,6 +238,7 @@ async def run_refund_clusterer(
     input_data: RefundClusterInput,
     shop_id: str,
     snapshot_id: str,
+    tier: str = "free",
 ) -> RefundClusterOutput:
     """Cluster refund reasons. Uses standard model (harder text task)."""
     cache_key = ai_narrative_cache_key(shop_id, snapshot_id, "refund_cluster")
@@ -263,6 +270,7 @@ async def run_refund_clusterer(
             function_name="refund_clusterer",
             use_small_model=False,  # standard model for clustering
             max_tokens=600,
+            tier=tier,
         )
         output = RefundClusterOutput(**result)
         await cache_set_safe(
@@ -285,6 +293,7 @@ async def run_refund_clusterer(
 async def run_weekly_receipt(
     input_data: WeeklyReceiptInput,
     shop_id: str,
+    tier: str = "free",
 ) -> WeeklyReceiptOutput:
     """
     Generate weekly money saved receipt.
@@ -308,6 +317,7 @@ async def run_weekly_receipt(
             function_name="weekly_receipt",
             use_small_model=True,
             max_tokens=500,
+            tier=tier,
         )
         output = WeeklyReceiptOutput(**result)
 

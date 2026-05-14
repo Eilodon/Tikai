@@ -342,42 +342,63 @@ async def recompute_insight(
     # 3. Load fee config — ADR-ARCH-003: use same date-range lookup as process_import.
     # Previously used shop.fee_config_version (wrong: ignores import period, uses current
     # shop config for a historical period → wrong fee rates → wrong P&L).
-    # Fix: load platform from the original import session, look up by period date range.
+    # Load platform from the original import session for platform-correct fee lookup.
+    # Load ALL configs overlapping [period_start, period_end] so per-order rate
+    # selection works correctly when TikTok/Shopee changes fees mid-period.
     import_session = await db.scalar(
         select(ImportSession).where(ImportSession.id == base.import_session_id)
     )
     fee_platform = (import_session.platform if import_session else None) or "tiktok"
-    fee_period_end = base.period_end
+    fee_period_end   = base.period_end
+    fee_period_start = base.period_start
 
-    fee_config_db = await db.scalar(
+    def _build_fee_config(db_row) -> FeeConfigData:
+        return FeeConfigData(
+            version=db_row.version,
+            platform_commission_rate=db_row.platform_commission_rate,
+            transaction_fee_rate=db_row.transaction_fee_rate,
+            order_processing_fee_per_order=db_row.order_processing_fee_per_order,
+            category_overrides={
+                k: Decimal(str(v)) for k, v in (db_row.category_overrides or {}).items()
+            },
+            effective_from=db_row.effective_from,
+            effective_to=db_row.effective_to,
+        )
+
+    fee_configs_db = (await db.scalars(
         select(FeeConfig)
         .where(
             FeeConfig.platform == fee_platform,
             FeeConfig.effective_from <= fee_period_end,
             or_(
                 FeeConfig.effective_to.is_(None),
-                FeeConfig.effective_to >= fee_period_end,
+                FeeConfig.effective_to >= fee_period_start,
             ),
         )
-        .order_by(FeeConfig.effective_from.desc())
-        .limit(1)
-    )
-    # Fallback: if no platform-specific config, try tiktok config
-    if fee_config_db is None and fee_platform != "tiktok":
-        fee_config_db = await db.scalar(
+        .order_by(FeeConfig.effective_from.asc())
+    )).all()
+
+    if not fee_configs_db and fee_platform != "tiktok":
+        log.warning(
+            "recompute_insight.no_platform_fee_config",
+            platform=fee_platform,
+            snapshot_id=str(base.id),
+            shop_id=str(shop.id),
+        )
+        fee_configs_db = (await db.scalars(
             select(FeeConfig)
             .where(
                 FeeConfig.platform == "tiktok",
                 FeeConfig.effective_from <= fee_period_end,
                 or_(
                     FeeConfig.effective_to.is_(None),
-                    FeeConfig.effective_to >= fee_period_end,
+                    FeeConfig.effective_to >= fee_period_start,
                 ),
             )
-            .order_by(FeeConfig.effective_from.desc())
-            .limit(1)
-        )
-    if not fee_config_db:
+            .order_by(FeeConfig.effective_from.asc())
+        )).all()
+
+    if not fee_configs_db:
         raise HTTPException(
             422,
             detail={
@@ -385,17 +406,7 @@ async def recompute_insight(
             },
         )
 
-    # v1.0.0: Pass transaction_fee_rate + order_processing_fee_per_order
-    # F-3-01 / F-1B-02: Pass category_overrides from DB (was hardcoded {} in both places)
-    fee_config = FeeConfigData(
-        version=fee_config_db.version,
-        platform_commission_rate=fee_config_db.platform_commission_rate,
-        transaction_fee_rate=fee_config_db.transaction_fee_rate,
-        order_processing_fee_per_order=fee_config_db.order_processing_fee_per_order,
-        category_overrides={
-            k: Decimal(str(v)) for k, v in (fee_config_db.category_overrides or {}).items()
-        },
-    )
+    fee_configs = [_build_fee_config(r) for r in fee_configs_db]
 
     # 4. Current COGS map — ADR-FIN-004: normalize keys to string+strip to match process_import.py
     raw_cogs = shop.cogs_map or {}
@@ -404,7 +415,7 @@ async def recompute_insight(
     # 5. Re-run Rule Engine
     insight_data = build_insight(
         rows=rows,
-        fee_config=fee_config,
+        fee_configs=fee_configs,
         cogs_map=cogs_map,
         category_baselines=CATEGORY_REFUND_BASELINES,
         shop_id=str(shop.id),

@@ -1,6 +1,6 @@
 import asyncio
 from logging.config import fileConfig
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
@@ -33,14 +33,24 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+_MIGRATION_LOCK_ID = 8765432187654321  # arbitrary stable int — unique per Tikai deployment
+
+
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata,
-        compare_type=True,
-    )
-    with context.begin_transaction():
-        context.run_migrations()
+    # pg_advisory_lock blocks until the lock is available, then holds it for the
+    # duration of this connection. When multiple replicas start together, only one
+    # runs migrations; the others wait, then find nothing to migrate and exit.
+    connection.execute(text(f"SELECT pg_advisory_lock({_MIGRATION_LOCK_ID})"))
+    try:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        connection.execute(text(f"SELECT pg_advisory_unlock({_MIGRATION_LOCK_ID})"))
 
 
 async def run_async_migrations() -> None:

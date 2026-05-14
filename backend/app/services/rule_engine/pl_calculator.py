@@ -20,6 +20,7 @@ class SKUSummary:
     gmv: Decimal
     net_revenue: Decimal
     order_count: int
+    total_quantity: int
     refund_count: int
     refund_rate: Decimal          # 0-1
     total_cogs: Decimal | None    # None nếu seller chưa nhập
@@ -150,6 +151,7 @@ def calculate_sku_summaries(
             gmv=a["gmv"],
             net_revenue=nr,
             order_count=order_count,
+            total_quantity=total_quantity,
             refund_count=a["refund_count"],
             refund_rate=safe_divide(Decimal(a["refund_count"]), Decimal(order_count)),
             total_cogs=total_cogs,

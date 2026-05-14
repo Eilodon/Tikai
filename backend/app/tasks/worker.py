@@ -2,8 +2,10 @@
 ARQ Worker.
 FIX BUG-07: verify_action_impact registered in functions list.
 v1.0.0: Removed duplicate `from datetime import...` inside loop body.
+v2.1.0: Converted monolithic run_weekly_receipts to per-shop ARQ jobs.
 """
 
+import uuid
 from datetime import UTC, datetime, timedelta  # v1.0.0: module-level only
 
 import structlog
@@ -46,18 +48,53 @@ async def shutdown(ctx: dict) -> None:
     log.info("arq.worker.shutdown")
 
 
-async def run_weekly_receipts(ctx: dict) -> None:
-    """Weekly batch — Monday 8AM VN (1AM UTC).
+async def trigger_weekly_receipts(ctx: dict) -> None:
+    """Cron trigger — Monday 8AM VN (1AM UTC).
 
-    ADR-ARCH-001: job_timeout=300s. At ~8-10s/shop (AI call + DB), a batch of 30
-    shops = ~270s which fits within the limit. Without this cap a SIGKILL at shop N
-    silently skips shops N+1…end — sellers wait 7 days for their next receipt.
-    Long-term: convert to per-shop jobs enqueued by a lightweight trigger cron.
+    Lightweight: queries all active shops, enqueues one per-shop job each.
+    Per-shop jobs run independently with their own timeout + ARQ dedup via _job_id.
+    Replaces the old monolithic run that capped at 30 shops and risked SIGKILL
+    silently skipping shops N+1 through end.
     """
-    # ADR-ARCH-001: cap per run to avoid job_timeout SIGKILL dropping shops silently.
-    # 30 shops × ~8s = ~240s, safely under 300s timeout with margin for slower AI calls.
-    MAX_SHOPS_PER_RUN = 30  # noqa: N806
+    from sqlalchemy import select
 
+    from app.models.shop import Shop
+
+    vn_now = datetime.now(UTC) + timedelta(hours=7)
+    iso_year, iso_week, _ = vn_now.isocalendar()
+    week_label = f"tuần {iso_week}/{iso_year}"
+
+    AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
+    arq = ctx.get("arq")
+    async with AsyncSessionLocal() as db:
+        shop_ids = list(
+            await db.scalars(select(Shop.id).where(Shop.is_active == True))  # noqa: E712
+        )
+
+    if not shop_ids:
+        log.info("weekly_receipts.trigger.no_active_shops")
+        return
+
+    enqueued = 0
+    for shop_id in shop_ids:
+        # _job_id guarantees idempotency — re-triggering cron (e.g. after worker restart)
+        # will be a no-op for shops already processed this week.
+        job_id = f"weekly-receipt-{shop_id}-{week_label}"
+        if arq:
+            await arq.enqueue_job(
+                "process_weekly_receipt_for_shop", str(shop_id), week_label, _job_id=job_id
+            )
+        enqueued += 1
+
+    log.info("weekly_receipts.trigger.done", enqueued=enqueued, week=week_label)
+
+
+async def process_weekly_receipt_for_shop(ctx: dict, shop_id: str, week_label: str) -> None:
+    """Per-shop weekly receipt job — runs in its own ARQ slot with full job_timeout.
+
+    Isolated: one shop failing has zero effect on others.
+    Idempotent: DB-level check + _job_id ARQ dedup prevent double-processing.
+    """
     from decimal import Decimal
 
     from sqlalchemy import select
@@ -68,162 +105,131 @@ async def run_weekly_receipts(ctx: dict) -> None:
     from app.schemas.ai_service import CompletedAction, WeeklyReceiptInput
     from app.services.ai import run_weekly_receipt
 
+    shop_uuid = uuid.UUID(shop_id)
     AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
     async with AsyncSessionLocal() as db:
-        shops = list(
-            await db.scalars(
-                select(Shop).where(Shop.is_active == True).limit(MAX_SHOPS_PER_RUN)  # noqa: E712
-            )
-        )
-        total = skipped = 0
-
-        if not shops:
-            log.info("weekly_receipts.no_active_shops")
+        shop = await db.scalar(select(Shop).where(Shop.id == shop_uuid))
+        if not shop:
+            log.warning("weekly_receipt_for_shop.shop_not_found", shop_id=shop_id)
             return
 
-        # FIX N+1: batch-load all completed actions for all active shops in 1 query
+        existing = await db.scalar(
+            select(WeeklyReceipt.shop_id).where(
+                WeeklyReceipt.shop_id == shop_uuid,
+                WeeklyReceipt.period_label == week_label,
+            )
+        )
+        if existing:
+            log.info("weekly_receipt_for_shop.already_done", shop_id=shop_id, week=week_label)
+            return
+
         week_ago = datetime.now(UTC) - timedelta(days=7)
-        shop_ids = [s.id for s in shops]
-        all_actions = list(
+        actions = list(
             await db.scalars(
                 select(AIAction).where(
-                    AIAction.shop_id.in_(shop_ids),
+                    AIAction.shop_id == shop_uuid,
                     AIAction.status == "done",
                     AIAction.completed_at >= week_ago,
                 )
             )
         )
-        actions_by_shop: dict = {}
-        for a in all_actions:
-            actions_by_shop.setdefault(a.shop_id, []).append(a)
 
-        # FIX N+1: batch-load existing receipts for this week to avoid 1 query per shop
-        vn_now = datetime.now(UTC) + timedelta(hours=7)
-        iso_year, iso_week, _ = vn_now.isocalendar()
-        week_label = f"tuần {iso_week}/{iso_year}"
-        existing_receipts = set(
-            await db.scalars(
-                select(WeeklyReceipt.shop_id).where(
-                    WeeklyReceipt.shop_id.in_(shop_ids),
-                    WeeklyReceipt.period_label == week_label,
-                )
+        if not actions:
+            log.info("weekly_receipt_for_shop.no_actions", shop_id=shop_id)
+            return
+
+        completed = [
+            CompletedAction(
+                action_title=a.title,
+                completed_at=a.completed_at.isoformat() if a.completed_at else "",
+                is_confirmed_impact=a.is_confirmed_impact,
+                confirmed_delta=a.confirmed_delta,
+                estimated_delta=None,
             )
+            for a in actions
+        ]
+        total_confirmed = sum(
+            (a.confirmed_delta or Decimal("0")) for a in actions if a.is_confirmed_impact
         )
 
-        for shop in shops:
+        # FIX BUG-NH4 (v2): heuristic estimate per rule_id
+        total_estimated = Decimal("0")
+        for a in actions:
+            if a.is_confirmed_impact:
+                continue
+            src = a.source_insight_json or {}
             try:
-                actions = actions_by_shop.get(shop.id, [])
-                if not actions:
-                    skipped += 1
-                    continue
+                mv = Decimal(str(src.get("metric_value", "0")))
+            except Exception:
+                mv = Decimal("0")
+            rule = a.rule_trigger or ""
+            if rule == "sku_margin_negative":
+                total_estimated += abs(mv)
+            elif rule == "creator_roi_below_one":
+                pass  # mv is ratio not money — skip estimation
 
-                completed = [
-                    CompletedAction(
-                        action_title=a.title,
-                        completed_at=a.completed_at.isoformat() if a.completed_at else "",
-                        is_confirmed_impact=a.is_confirmed_impact,
-                        confirmed_delta=a.confirmed_delta,
-                        estimated_delta=None,
-                    )
-                    for a in actions
-                ]
-                total_confirmed = sum(
-                    (a.confirmed_delta or Decimal("0")) for a in actions if a.is_confirmed_impact
-                )
+        _subscription_cost_map = {
+            "free": Decimal("0"),
+            "pro": Decimal("99000"),
+            "business": Decimal("299000"),
+        }
+        _tier = getattr(shop, "subscription_tier", "free") or "free"
+        receipt_input = WeeklyReceiptInput(
+            shop_name=shop.shop_name,
+            period_label=week_label,
+            actions_completed=completed,
+            total_confirmed_saved=total_confirmed,
+            total_estimated_saved=total_estimated,
+            subscription_cost_vnd=_subscription_cost_map.get(_tier, Decimal("0")),
+        )
+        receipt_output = await run_weekly_receipt(receipt_input, shop_id)
 
-                # FIX BUG-NH4 (v2): heuristic estimate per rule_id
-                total_estimated = Decimal("0")
-                for a in actions:
-                    if a.is_confirmed_impact:
-                        continue
-                    src = a.source_insight_json or {}
-                    try:
-                        mv = Decimal(str(src.get("metric_value", "0")))
-                    except Exception:
-                        mv = Decimal("0")
-                    rule = a.rule_trigger or ""
-                    if rule == "sku_margin_negative":
-                        total_estimated += abs(mv)
-                    elif rule == "creator_roi_below_one":
-                        pass  # mv is ratio not money — skip estimation
+        receipt = WeeklyReceipt(
+            shop_id=shop_uuid,
+            period_label=week_label,
+            total_confirmed_saved=total_confirmed,
+            total_estimated_saved=total_estimated,
+            actions_completed_count=len(actions),
+            headline=receipt_output.headline,
+            confirmed_section=receipt_output.confirmed_section,
+            estimated_section=receipt_output.estimated_section,
+            next_week_focus=receipt_output.next_week_focus,
+            disclaimer=receipt_output.disclaimer,
+        )
+        db.add(receipt)
+        await db.flush()
+        await db.commit()
 
-                # Idempotency check (uses pre-loaded set — no extra query)
-                if shop.id in existing_receipts:
-                    skipped += 1
-                    continue
+        log.info("weekly_receipt_for_shop.done", shop_id=shop_id, week=week_label)
 
-                _subscription_cost_map = {
-                    "free": Decimal("0"),
-                    "pro": Decimal("99000"),
-                    "business": Decimal("299000"),
-                }
-                _tier = getattr(shop, "subscription_tier", "free") or "free"
-                receipt_input = WeeklyReceiptInput(
-                    shop_name=shop.shop_name,
-                    period_label=week_label,
-                    actions_completed=completed,
-                    total_confirmed_saved=total_confirmed,
-                    total_estimated_saved=total_estimated,
-                    subscription_cost_vnd=_subscription_cost_map.get(_tier, Decimal("0")),
-                )
-                receipt_output = await run_weekly_receipt(receipt_input, str(shop.id))
-
-                receipt = WeeklyReceipt(
-                    shop_id=shop.id,
-                    period_label=week_label,
-                    total_confirmed_saved=total_confirmed,
-                    # FIX v0.5.2: use total_estimated not hardcoded Decimal("0")
-                    total_estimated_saved=total_estimated,
-                    actions_completed_count=len(actions),
-                    headline=receipt_output.headline,
-                    confirmed_section=receipt_output.confirmed_section,
-                    estimated_section=receipt_output.estimated_section,
-                    next_week_focus=receipt_output.next_week_focus,
-                    disclaimer=receipt_output.disclaimer,
-                )
-                db.add(receipt)
+        # ── Email digest ─────────────────────────────────────────────────
+        # Fire-and-forget: NEVER let email failure block receipt creation.
+        if shop.email_digest_enabled and shop.notification_email:
+            sent = await send_weekly_digest(
+                to_email=shop.notification_email,
+                shop_name=shop.shop_name,
+                period_label=week_label,
+                headline=receipt_output.headline,
+                confirmed_section=receipt_output.confirmed_section,
+                estimated_section=receipt_output.estimated_section,
+                next_week_focus=receipt_output.next_week_focus,
+                disclaimer=receipt_output.disclaimer,
+                total_confirmed_saved=str(total_confirmed),
+                total_estimated_saved=str(total_estimated),
+            )
+            if sent:
+                receipt.email_sent = True
+                receipt.email_sent_at = datetime.now(UTC)
                 await db.flush()
                 await db.commit()
-                total += 1
+            log.info("weekly_receipt_for_shop.email_dispatch", shop_id=shop_id, sent=sent)
 
-                # ── Email digest (v1.2.0) ────────────────────────────────
-                # Fire-and-forget: NEVER let email failure block receipt creation.
-                # email_sent / email_sent_at are tracking-only — not critical path.
-                if shop.email_digest_enabled and shop.notification_email:
-                    sent = await send_weekly_digest(
-                        to_email=shop.notification_email,
-                        shop_name=shop.shop_name,
-                        period_label=week_label,
-                        headline=receipt_output.headline,
-                        confirmed_section=receipt_output.confirmed_section,
-                        estimated_section=receipt_output.estimated_section,
-                        next_week_focus=receipt_output.next_week_focus,
-                        disclaimer=receipt_output.disclaimer,
-                        total_confirmed_saved=str(total_confirmed),
-                        total_estimated_saved=str(total_estimated),
-                    )
-                    if sent:
-                        receipt.email_sent = True
-                        receipt.email_sent_at = datetime.now(UTC)
-                        await db.flush()
-                        await db.commit()
-                    log.info(
-                        "weekly_receipts.email_dispatch",
-                        shop_id=str(shop.id),
-                        sent=sent,
-                    )
 
-            except Exception as e:
-                log.error("weekly_receipts.shop_failed", shop_id=str(shop.id), error=str(e))
-                # ADR-ASYNC-002: without rollback, dirty ORM objects from the failed shop
-                # (e.g. a receipt added but not flushed) remain in session state. The next
-                # shop iteration would flush them, committing receipt_A despite shop A failing.
-                try:
-                    await db.rollback()
-                except Exception as rb_err:
-                    log.error("weekly_receipts.rollback_failed", error=str(rb_err))
-
-        log.info("weekly_receipts.done", total=total, skipped=skipped)
+# Keep old name registered as no-op for backward compat with any manually enqueued jobs
+async def run_weekly_receipts(ctx: dict) -> None:
+    """Deprecated: replaced by trigger_weekly_receipts + process_weekly_receipt_for_shop."""
+    log.warning("run_weekly_receipts.deprecated", advice="use trigger_weekly_receipts instead")
+    await trigger_weekly_receipts(ctx)
 
 
 async def cleanup_stuck_imports(ctx: dict) -> None:
@@ -282,9 +288,16 @@ async def cleanup_stuck_imports(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [process_import, run_weekly_receipts, verify_action_impact, cleanup_stuck_imports]
+    functions = [
+        process_import,
+        trigger_weekly_receipts,
+        process_weekly_receipt_for_shop,
+        run_weekly_receipts,  # deprecated shim — kept so old enqueued jobs don't 404
+        verify_action_impact,
+        cleanup_stuck_imports,
+    ]
     cron_jobs = [
-        cron(run_weekly_receipts, weekday=0, hour=1, minute=0),
+        cron(trigger_weekly_receipts, weekday=0, hour=1, minute=0),
         cron(cleanup_stuck_imports, minute=5),  # F-08: runs at :05 every hour
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

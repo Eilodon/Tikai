@@ -40,6 +40,8 @@ class RawOrderRow:
     refund_reason_raw: str | None = None
     # cogs is None until seller manually inputs
     cogs: Decimal | None = None
+    # Shopee-only: parent SKU for variation→parent COGS cascade (Issue 2)
+    parent_sku_id: str | None = None
 
 
 @dataclass

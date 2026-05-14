@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.gates import get_ai_calls_limit
 from app.core.storage import download_file as storage_download
 from app.models.ai_action import AIAction
 from app.models.fee_config import FeeConfig
@@ -86,6 +87,9 @@ async def process_import(ctx: dict, session_id: str) -> None:
             session.rows_failed = len(parse_result.failed_rows)
             session.can_continue_mode = parse_result.can_continue_mode
 
+            # Compute tier early — needed for per-tier AI budget checks on all AI calls below
+            _tier = getattr(session.shop, "subscription_tier", "free") or "free"
+
             # 3. AI import rescue
             rescue_input = ImportRescueInput(
                 headers=parse_result.headers,
@@ -96,7 +100,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                     "platform_commission", "affiliate_commission",
                 ],
             )
-            rescue_output = await run_import_rescue(rescue_input, str(session.shop_id))
+            rescue_output = await run_import_rescue(rescue_input, str(session.shop_id), tier=_tier)
             session.ai_rescue_message = rescue_output.model_dump()
 
             if parse_result.can_continue_mode == "blocked":
@@ -142,46 +146,61 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 session.platform = _order_platform
             await db.flush()
 
-            # 5. Load FeeConfig — F-1B-01: filter by date range, not just most recent
-            # Without date filter: historical imports get newest fee config → wrong fees applied
+            # 5. Load FeeConfig — per-order lookup across the full import period.
+            # Load ALL configs that overlap [period_start, period_end] so orders placed
+            # before a mid-period rate change use the correct (older) rates.
             shop = session.shop
             platform = parse_result.platform
-            import_period_end = parse_result.date_range_end or date.today()
+            import_period_end   = parse_result.date_range_end   or date.today()
+            import_period_start = parse_result.date_range_start or import_period_end
 
-            fee_config_db = await db.scalar(
+            def _build_fee_config(db_row) -> FeeConfigData:
+                return FeeConfigData(
+                    version=db_row.version,
+                    platform_commission_rate=db_row.platform_commission_rate,
+                    transaction_fee_rate=db_row.transaction_fee_rate,
+                    order_processing_fee_per_order=db_row.order_processing_fee_per_order,
+                    category_overrides={
+                        k: Decimal(str(v))
+                        for k, v in (db_row.category_overrides or {}).items()
+                    },
+                    effective_from=db_row.effective_from,
+                    effective_to=db_row.effective_to,
+                )
+
+            fee_configs_db = (await db.scalars(
                 select(FeeConfig)
                 .where(
                     FeeConfig.platform == platform,
                     FeeConfig.effective_from <= import_period_end,
                     or_(
                         FeeConfig.effective_to.is_(None),
-                        FeeConfig.effective_to >= import_period_end,
+                        FeeConfig.effective_to >= import_period_start,
                     ),
                 )
-                .order_by(FeeConfig.effective_from.desc())
-                .limit(1)
-            )
-            if fee_config_db is None and platform != "tiktok":
-                # Fallback to TikTok config for unknown platforms
+                .order_by(FeeConfig.effective_from.asc())
+            )).all()
+
+            if not fee_configs_db and platform != "tiktok":
                 log.warning(
                     "process_import.no_platform_fee_config",
                     platform=platform,
                     session_id=session_id,
                 )
-                fee_config_db = await db.scalar(
+                fee_configs_db = (await db.scalars(
                     select(FeeConfig)
                     .where(
                         FeeConfig.platform == "tiktok",
                         FeeConfig.effective_from <= import_period_end,
                         or_(
                             FeeConfig.effective_to.is_(None),
-                            FeeConfig.effective_to >= import_period_end,
+                            FeeConfig.effective_to >= import_period_start,
                         ),
                     )
-                    .order_by(FeeConfig.effective_from.desc())
-                    .limit(1)
-                )
-            if fee_config_db is None:
+                    .order_by(FeeConfig.effective_from.asc())
+                )).all()
+
+            if not fee_configs_db:
                 log.error(
                     "process_import.fee_config_missing",
                     session_id=session_id,
@@ -201,18 +220,14 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 await db.commit()
                 return
 
-            # v1.0.0: Pass transaction_fee_rate + order_processing_fee_per_order
-            # F-1B-02: Pass category_overrides from DB (was hardcoded {} — Mall sellers wrong estimate)
-            fee_config = FeeConfigData(
-                version=fee_config_db.version,
-                platform_commission_rate=fee_config_db.platform_commission_rate,
-                transaction_fee_rate=fee_config_db.transaction_fee_rate,
-                order_processing_fee_per_order=fee_config_db.order_processing_fee_per_order,
-                category_overrides={
-                    k: Decimal(str(v))
-                    for k, v in (fee_config_db.category_overrides or {}).items()
-                },
-            )
+            fee_configs = [_build_fee_config(r) for r in fee_configs_db]
+            if len(fee_configs) > 1:
+                log.info(
+                    "process_import.multi_fee_config",
+                    count=len(fee_configs),
+                    versions=[c.version for c in fee_configs],
+                    session_id=session_id,
+                )
 
             # 6. Load COGS map
             # ADR-FIN-004: normalize keys — frontend may send int keys or trailing spaces,
@@ -227,7 +242,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # 7. Run Rule Engine
             insight_data = build_insight(
                 rows=parse_result.rows,
-                fee_config=fee_config,
+                fee_configs=fee_configs,
                 cogs_map=cogs_map,
                 category_baselines=CATEGORY_REFUND_BASELINES,
                 shop_id=str(session.shop_id),
@@ -321,13 +336,13 @@ async def process_import(ctx: dict, session_id: str) -> None:
             )
             # Aha Narrator is non-critical — a failure must not abort the import.
             try:
-                await run_aha_narrator(aha_input, str(session.shop_id), str(snapshot.id))
+                await run_aha_narrator(aha_input, str(session.shop_id), str(snapshot.id), tier=_tier)
             except Exception as aha_err:
                 log.warning("process_import.aha_narrator_failed",
                             session_id=session_id, error=str(aha_err))
 
             # F-1B-06: explicit tier-based AI call limits (replaces opaque * 5 multiplier)
-            _tier = getattr(shop, "subscription_tier", "free") or "free"
+            # _tier already computed above (near step 3) for budget checks
             _tier_limits = {
                 "free":     settings.ai_max_calls_per_import_free,
                 "pro":      settings.ai_max_calls_per_import_pro,
@@ -349,7 +364,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                         context_json={"rule_id": trigger.rule_id, "entity_type": trigger.entity_type, "priority": trigger.priority},
                     )
                     action_output = await run_action_coach(
-                        action_input, str(session.shop_id), str(snapshot.id)
+                        action_input, str(session.shop_id), str(snapshot.id), tier=_tier
                     )
                     return AIAction(
                         shop_id=session.shop_id,

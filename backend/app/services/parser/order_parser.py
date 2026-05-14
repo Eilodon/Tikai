@@ -182,4 +182,5 @@ def _parse_single_row(
         creator_id=get("creator_id") or None,
         creator_name=get("creator_name") or None,
         refund_reason_raw=get("refund_reason_raw") or None,
+        parent_sku_id=get("parent_sku_id") or None,
     )

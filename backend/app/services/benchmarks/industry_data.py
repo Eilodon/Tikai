@@ -8,6 +8,7 @@ Giai đoạn 2 (khi ≥100 shops): aggregated anonymous benchmark từ Tikai dat
 INVARIANT: mỗi BenchmarkComparison phải có source field — không show benchmark
            mà không có nguồn, tránh seller hiểu nhầm đây là số Tikai tự tính.
 """
+from datetime import date
 from decimal import Decimal
 from typing import Literal
 
@@ -18,6 +19,8 @@ from app.services.rule_engine.fee_calculator import safe_divide
 Category = Literal["fashion", "beauty", "food", "electronics", "home", "baby", "other"]
 
 SOURCE = "Metric.vn / YouNet ECI 2025"
+BENCHMARK_VERSION = "2025-Q1"
+LAST_UPDATED = date(2025, 1, 1)
 
 # Median refund rates by category (TikTok Shop VN)
 REFUND_RATE_BENCHMARKS: dict[Category, Decimal] = {
@@ -63,6 +66,8 @@ class BenchmarkComparison(BaseModel):
     label: str                       # human-readable verdict string
     category: Category
     source: str
+    benchmark_version: str          # e.g. "2025-Q1" — lets client show data age
+    last_updated: date              # date the benchmark data was last refreshed
 
 
 def compare_to_industry(
@@ -105,6 +110,8 @@ def compare_to_industry(
         label=label,
         category=category,
         source=SOURCE,
+        benchmark_version=BENCHMARK_VERSION,
+        last_updated=LAST_UPDATED,
     ))
 
     # ── Margin ───────────────────────────────────────────────────────────────
@@ -137,6 +144,8 @@ def compare_to_industry(
             label=margin_label,
             category=category,
             source=SOURCE,
+            benchmark_version=BENCHMARK_VERSION,
+            last_updated=LAST_UPDATED,
         ))
 
     # ── Fee Burden ───────────────────────────────────────────────────────────
@@ -167,6 +176,8 @@ def compare_to_industry(
             label=fee_label,
             category=category,
             source=SOURCE,
+            benchmark_version=BENCHMARK_VERSION,
+            last_updated=LAST_UPDATED,
         ))
 
     return results

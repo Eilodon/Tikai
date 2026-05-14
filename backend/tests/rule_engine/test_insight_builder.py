@@ -12,7 +12,7 @@ class TestBuildInsight:
     def test_full_pipeline_produces_insight(self, sample_rows, sample_fee_config):
         insight = build_insight(
             rows=sample_rows,
-            fee_config=sample_fee_config,
+            fee_configs=sample_fee_config,
             cogs_map={},
             category_baselines={},
             shop_id="test-shop",
@@ -24,7 +24,7 @@ class TestBuildInsight:
     def test_net_revenue_mode_when_no_cogs(self, sample_rows, sample_fee_config):
         insight = build_insight(
             rows=sample_rows,
-            fee_config=sample_fee_config,
+            fee_configs=sample_fee_config,
             cogs_map={},
             category_baselines={},
             shop_id="test-shop",
@@ -36,7 +36,7 @@ class TestBuildInsight:
         cogs_map = {"SKU-001": Decimal("40000")}  # only 1 of 2 SKUs
         insight = build_insight(
             rows=sample_rows,
-            fee_config=sample_fee_config,
+            fee_configs=sample_fee_config,
             cogs_map=cogs_map,
             category_baselines={},
             shop_id="test-shop",
@@ -47,7 +47,7 @@ class TestBuildInsight:
     def test_empty_rows_returns_zero_insight(self, sample_fee_config):
         insight = build_insight(
             rows=[],
-            fee_config=sample_fee_config,
+            fee_configs=sample_fee_config,
             cogs_map={},
             category_baselines={},
             shop_id="test-shop",
@@ -59,7 +59,7 @@ class TestBuildInsight:
         cogs_map = {"SKU-001": Decimal("200000")}  # force negative margin
         insight = build_insight(
             rows=sample_rows,
-            fee_config=sample_fee_config,
+            fee_configs=sample_fee_config,
             cogs_map=cogs_map,
             category_baselines={},
             shop_id="test-shop",
@@ -71,7 +71,7 @@ class TestBuildInsight:
         from datetime import date
         insight = build_insight(
             rows=sample_rows,
-            fee_config=sample_fee_config,
+            fee_configs=sample_fee_config,
             cogs_map={},
             category_baselines={},
             shop_id="test-shop",

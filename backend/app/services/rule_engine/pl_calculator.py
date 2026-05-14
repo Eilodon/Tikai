@@ -106,11 +106,15 @@ def calculate_sku_summaries(
         "sku_name": "", "gmv": Decimal("0"), "net_revenue": Decimal("0"),
         "order_count": 0, "refund_count": 0, "total_quantity": 0,
         "affiliate_commission": Decimal("0"), "voucher_cost": Decimal("0"),
+        "parent_sku_id": None,
     })
 
     for row in rows:
         a = agg[row.sku_id]
         a["sku_name"] = row.sku_name
+        # Track parent SKU for COGS cascade (Shopee variant→parent fallback)
+        if row.parent_sku_id and not a["parent_sku_id"]:
+            a["parent_sku_id"] = row.parent_sku_id
         a["gmv"] += row.gmv
         a["net_revenue"] += calculate_net_revenue(row)
         a["order_count"] += 1
@@ -127,9 +131,11 @@ def calculate_sku_summaries(
         nr = a["net_revenue"]
         order_count = a["order_count"]
         total_quantity = a["total_quantity"]
+        parent_sku_id = a["parent_sku_id"]
+        # COGS cascade: try variation SKU first, then parent SKU (Shopee variant support)
         cogs_per_unit = cogs_map.get(sku_id)
-        # FIX P0-3: multiply by total_quantity (units sold), not order_count (orders)
-        # If seller entered COGS per unit, we need total units, not total orders
+        if cogs_per_unit is None and parent_sku_id:
+            cogs_per_unit = cogs_map.get(parent_sku_id)
         total_cogs = cogs_per_unit * total_quantity if cogs_per_unit is not None else None
         margin = (nr - total_cogs) if total_cogs is not None else None
         # FIX BUG-NH2: use GMV as denominator (e-commerce standard)

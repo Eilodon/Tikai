@@ -16,6 +16,7 @@ LeakReason = Literal[
     "cogs_missing",
     "refund_spike",
     "commission_exceeds_margin",
+    "shipping_weight_mismatch",
 ]
 
 
@@ -129,3 +130,40 @@ def detect_top_leaks(
     # Sort by estimated_loss desc, return top_n
     ranked = sorted(seen.values(), key=lambda x: x.estimated_loss, reverse=True)
     return ranked[:top_n]
+
+
+def detect_shipping_adjustment_leaks(
+    settlement_rows: "list",
+    threshold_vnd: Decimal = Decimal("100000"),
+) -> list[LeakItem]:
+    """Detect SKUs repeatedly charged shipping weight adjustment fees.
+
+    When actual package weight > declared listing weight, TikTok silently deducts
+    the delta from settlement. A SKU with >100k VND in adjustments per period needs
+    a listing weight update.
+
+    settlement_rows: list[SettlementRow] — pass the parsed settlement export.
+    threshold_vnd: minimum total adjustment to flag (default 100,000 VND / period).
+    """
+    adj_by_sku: dict[str, Decimal] = {}
+    for row in settlement_rows:
+        if row.is_shipping_weight_adjustment and row.seller_sku:
+            adj_by_sku.setdefault(row.seller_sku, Decimal("0"))
+            adj_by_sku[row.seller_sku] += abs(row.fee_amount)
+
+    leaks: list[LeakItem] = []
+    for sku_id, total_adj in adj_by_sku.items():
+        if total_adj >= threshold_vnd:
+            leaks.append(
+                LeakItem(
+                    type="sku",
+                    id=sku_id,
+                    name=sku_id,
+                    estimated_loss=total_adj,
+                    reason="shipping_weight_mismatch",
+                    confidence="high",
+                    can_act_now=True,
+                )
+            )
+
+    return sorted(leaks, key=lambda x: x.estimated_loss, reverse=True)

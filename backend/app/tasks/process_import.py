@@ -328,6 +328,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                         "suggested_max_commission_rate": str(c.suggested_max_commission_rate)
                         if c.suggested_max_commission_rate is not None
                         else None,
+                        "commission_on_refunded_orders": str(c.commission_on_refunded_orders),
                     }
                     for c in insight_data.top_creators
                 ],

@@ -24,6 +24,7 @@ from app.api.v1 import (
     imports,
     insights,
     livestream,
+    reconcile,
     shops,
     tools,
     weekly_receipts,
@@ -141,6 +142,7 @@ app.include_router(cogs.router, prefix="/v1", tags=["cogs"])
 app.include_router(weekly_receipts.router, prefix="/v1", tags=["weekly-receipts"])
 app.include_router(livestream.router, prefix="/v1", tags=["livestream"])
 app.include_router(tools.router, prefix="/v1", tags=["tools"])
+app.include_router(reconcile.router, prefix="/v1", tags=["reconcile"])
 app.include_router(demo.router, prefix="/v1", tags=["demo"])
 
 # ── Health Endpoints ──────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -43,7 +44,7 @@ class LiveStreamSession(Base):
         onupdate=lambda: datetime.now(UTC),
     )
 
-    @property
+    @hybrid_property
     def total_cost(self) -> Decimal:
         return (
             self.host_cost
@@ -51,6 +52,17 @@ class LiveStreamSession(Base):
             + self.product_sample_cost
             + self.ads_cost
             + self.other_cost
+        )
+
+    @total_cost.expression  # type: ignore[no-redef]
+    @classmethod
+    def total_cost(cls):
+        return (
+            cls.host_cost
+            + cls.studio_cost
+            + cls.product_sample_cost
+            + cls.ads_cost
+            + cls.other_cost
         )
 
     @property

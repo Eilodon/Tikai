@@ -67,6 +67,7 @@ async def send_zns_message(
     def _send() -> bool:
         try:
             import httpx
+
             with httpx.Client(timeout=10) as client:
                 resp = client.post(
                     f"{ZNS_API_BASE}/v2/zns/send",
@@ -77,7 +78,9 @@ async def send_zns_message(
                     body = resp.json()
                     if body.get("error") == 0:
                         return True
-                    log.warning("zns.send_rejected", error=body.get("error"), msg=body.get("message"))
+                    log.warning(
+                        "zns.send_rejected", error=body.get("error"), msg=body.get("message")
+                    )
                     return False
                 log.warning("zns.send_http_error", status=resp.status_code, body=resp.text[:200])
                 return False

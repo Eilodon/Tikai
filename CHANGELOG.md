@@ -2,6 +2,67 @@
 
 ---
 
+# 🚀 Tikai v2.2.0 — Settlement Reconciliation, Creator CRM & Push Alerts
+> Closes the loop between TikTok payouts and internal P&L, adds a full Creator CRM with auto-sync, and introduces daily Web Push alerts for critical revenue signals.
+> **No new migrations required** — `creator_profiles` table added in `0015_add_creator_profiles.py`; ZNS fields in `0013_add_zns_fields.py` — both already tracked.
+> Zero breaking changes to existing API contracts — all new endpoints are additive.
+
+## Settlement Reconciliation (`/doi-soat`)
+
+**Backend:** `POST /v1/reconcile` — Upload TikTok settlement CSV to compare actual payout against Rule Engine expected payout.
+**Files:** `backend/app/api/v1/reconcile.py`, `backend/app/services/rule_engine/settlement_reconciler.py`
+
+- Parses settlement CSV rows (transaction_type, fee_amount, description, adjustment_type, seller_sku)
+- Detects 4 hidden cost categories: shipping adjustments, refund admin fees, non-clawback commissions, reserve holds
+- Returns verdict: `matched` / `minor_gap` / `major_gap` / `investigate` with Vietnamese action items
+- Threshold: minor gap < 2%; major gap ≥ 2%; investigate = expected payout = 0
+- 11 unit tests; feature-gated at Pro+ (returns 402 for Free tier)
+
+**Frontend:** `/doi-soat` page — Dropzone file upload → verdict badge + 3-column summary + hidden cost breakdown + action items.
+- Marks `localStorage['tikai_reconciled_settlement'] = '1'` on first successful reconciliation (Activation Progress integration)
+- Linked from nav + ActivationProgress step (replaces old `/import?tab=settlement` stub)
+
+## Creator CRM (`/creators`)
+
+**Backend:** Full CRUD for creator profiles with performance tracking.
+**Files:** `backend/app/api/v1/creators.py`, `backend/app/services/creators/sync.py`
+
+- `GET /v1/creators` — filter by `status` / `performance_label`; `POST /v1/creators/sync` — upsert from latest snapshot
+- Auto-sync on every successful import (`process_import.py` calls `sync_creators_from_snapshot()` after snapshot refresh)
+- Refactored: sync logic extracted to `services/creators/sync.py`, used by both the API endpoint and the import worker
+
+**Frontend:** `/creators` page — accordion list, inline editor (status, Zalo, internal note), 402 upgrade gate.
+- Filter tabs: Tất cả / ⭐ Star / Hòa vốn / Đang lỗ
+- Shows GMV 30d, hoa hồng, revenue efficiency; warns on commission waste from refunded orders
+- Suggests max commission rate when available
+
+## Daily Web Push Alerts
+
+**Files:** `backend/app/tasks/daily_alerts.py`, `backend/app/tasks/worker.py`
+
+- Cron: daily at 01:15 UTC (08:15 VN) via ARQ
+- Sends Web Push to shops with `push_subscription_json` when: top leak ≥ 100,000 VND OR any SKU is `critical`
+- Redis idempotency key `daily_alert_sent:{shop_id}` with 24h TTL — max 1 push per shop per day
+- Fire-and-forget: one shop failing never blocks others; all exceptions are caught and logged
+- 6 unit tests
+
+## Zalo ZNS Scaffolding
+
+**Files:** `backend/app/services/zalo/zns_client.py`, `backend/app/core/config.py`
+
+- `send_zns_to_shop(shop, template_id, params)` — no-op when `ZALO_OA_ID` / `ZALO_ZNS_ACCESS_TOKEN` not set; sends via Zalo API when credentials present
+- PII-safe logging: phone number masked to first 3 + last 2 digits
+- Config: `ZALO_OA_ID`, `ZALO_ZNS_ACCESS_TOKEN` env vars (both optional, feature disables cleanly if absent)
+- Frontend: Zalo ZNS settings panel in `/settings` — phone input + enable toggle (Pro+)
+
+## UI / UX Fixes
+
+- **WowScreen** (first-import congratulations): 3-way conditional for net revenue box — blue (no COGS), red/green (with COGS, based on margin sign); top insight block shows top leak if loss > 0, else top SKU card in net-revenue mode
+- **Overview COGS nudge**: Quantified risk callout — shows top-leak SKU name + estimated loss amount instead of generic "you're missing COGS" message
+- **Nav**: Added "Creators" and "Đối soát" links between Livestream and Cài đặt
+
+---
+
 # 🚀 Tikai v2.1.0 — Analytics Suite
 > 6 new analytical features that turn raw P&L numbers into actionable seller intelligence.
 > **Migration required:** `alembic upgrade head` applies `0008_add_cash_flow_fields`.

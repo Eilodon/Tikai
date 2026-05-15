@@ -2,7 +2,7 @@
 
 AI-powered P&L analytics for Vietnamese TikTok Shop and Shopee sellers. Tikai parses platform CSV/XLSX exports, calculates true profitability per SKU and creator, detects revenue leaks, and generates actionable Vietnamese-language recommendations backed by Claude.
 
-**Version:** 2.0.2 | **Stack:** FastAPI · Next.js 15 · PostgreSQL · Redis · Anthropic API
+**Version:** 2.2.0 | **Stack:** FastAPI · Next.js 15 · PostgreSQL · Redis · Anthropic API
 
 ---
 
@@ -33,9 +33,21 @@ AI-powered P&L analytics for Vietnamese TikTok Shop and Shopee sellers. Tikai pa
 - **Recompute** — Re-run Rule Engine on existing orders after COGS update, no re-upload needed (Pro+)
 - **Settlement parsing** — Parses TikTok settlement exports including `transaction_type`, `fee_amount`, `description`, `adjustment_type`, `seller_sku` for reconciliation
 
-### Receipts & Scheduling
-- **Weekly receipt** — Monday digest of completed actions and estimated savings, generated per-shop via isolated ARQ jobs (each shop has independent timeout and fault isolation)
-- **Email digest** — Weekly receipt sent to `notification_email` via SendGrid; delivery tracked in DB; opt-in per shop
+### Settlement Reconciliation
+- **Payout reconciliation** — Upload TikTok settlement CSV to compare actual payout vs Rule Engine expected payout; verdict: `matched` / `minor_gap` / `major_gap` / `investigate` with Vietnamese action items
+- **Hidden cost detection** — Automatically surfaces 4 cost categories often missed: shipping adjustments, refund admin fees, non-clawback commissions, reserve holds
+- **SKU callout** — Flags which SKUs are generating the most shipping adjustment waste
+
+### Creator CRM
+- **Creator profiles** — Full CRUD (status, Zalo contact, internal note, negotiated rate) per creator linked to the shop
+- **Auto-sync on import** — Every successful file import updates `creator_profiles` from the latest snapshot's `top_creators` data — no manual sync needed
+- **Performance tracking** — GMV 30d, commission paid, revenue efficiency, refund rate, performance label (star / break_even / losing), suggested max commission rate
+- **Commission waste alert** — Highlights commission already paid on subsequently-refunded orders (TikTok does not claw back)
+
+### Notifications & Alerts
+- **Daily Web Push** — ARQ cron at 08:15 VN time; sends browser push to shops with active subscription when a top leak exceeds 100,000 VND or any SKU is critical; Redis idempotency cap of 1 push per shop per day
+- **Weekly email digest** — Monday P&L summary sent to `notification_email` via SendGrid; per-shop ARQ jobs with full fault isolation
+- **Zalo ZNS scaffolding** — `send_zns_to_shop()` ready for production; activates automatically when `ZALO_OA_ID` and `ZALO_ZNS_ACCESS_TOKEN` are set; no-ops cleanly when absent
 - **Cash Flow Timeline** — Settlement cash inflow forecast for next 14 / 30 days plus pending amount
 - **Livestream ROI tracker** — Record host / studio / sample / ad costs per livestream session, update attributed GMV and orders post-live, compute live ROI and net ROI
 
@@ -64,7 +76,7 @@ AI-powered P&L analytics for Vietnamese TikTok Shop and Shopee sellers. Tikai pa
 
 ```
 Frontend (Next.js 15)
-  pages: overview · import · actions · livestream · settings
+  pages: overview · import · actions · doi-soat · creators · livestream · settings
   auth:  Supabase SSR + middleware guards
         │
         │ REST/JSON (Bearer JWT)
@@ -80,6 +92,7 @@ Backend (FastAPI)
   /v1/insights/recompute                   — re-run Rule Engine on existing orders (Pro+)
   /v1/actions                              — list / complete / dismiss AI recommendations
   /v1/shops/me                             — shop profile + notification settings
+  /v1/shops/me/notifications               — update email digest settings
   /v1/cogs                                 — get / upsert COGS per SKU
   /v1/cogs/bulk-import                     — bulk COGS upload via CSV
   /v1/tools/price-recommend                — reverse P&L: COGS + margin → min price
@@ -87,46 +100,61 @@ Backend (FastAPI)
   /v1/tools/simulate-campaign              — multi-SKU campaign pre-check (no DB writes)
   /v1/weekly-receipts                      — list / read receipts
   /v1/livestream                           — create / update / delete livestream sessions
+  /v1/reconcile                            — settlement CSV reconciliation (Pro+)
+  /v1/creators                             — list creator profiles with filter (Pro+)
+  /v1/creators/{profile_id}                — get / update creator profile
+  /v1/creators/sync                        — upsert creators from latest snapshot
         │
         ├── Rule Engine (app/services/rule_engine/)
-        │     fee_calculator  — FeeConfigData, per-order config selection, net revenue calc
-        │     pl_calculator   — GMV→Net Revenue, SKUSummary with total_quantity, CreatorSummary
-        │     leak_detector   — negative margin, refund spike, creator ROI, voucher loss
-        │     action_rules    — ActionTrigger generation from leak signals
-        │     insight_builder — InsightData assembly, top-N ranking, COGS coverage pct
-        │     baselines       — category refund rate baselines (CATEGORY_REFUND_BASELINES)
-        │     settlement_calc — cash_in_14d, cash_in_30d, cash_pending_total
-        │     price_recommender — COGS + target margin → min price
-        │     simulator       — single/multi-SKU what-if P&L delta
+        │     fee_calculator      — FeeConfigData, per-order config selection, net revenue calc
+        │     pl_calculator       — GMV→Net Revenue, SKUSummary with total_quantity, CreatorSummary
+        │     leak_detector       — negative margin, refund spike, creator ROI, voucher loss
+        │     action_rules        — ActionTrigger generation from leak signals
+        │     insight_builder     — InsightData assembly, top-N ranking, COGS coverage pct
+        │     baselines           — category refund rate baselines (CATEGORY_REFUND_BASELINES)
+        │     settlement_calc     — cash_in_14d, cash_in_30d, cash_pending_total
+        │     settlement_reconciler — payout gap analysis, hidden cost detection, verdict
+        │     price_recommender   — COGS + target margin → min price
+        │     simulator           — single/multi-SKU what-if P&L delta
         │
         ├── Parsers (app/services/parser/)
-        │     detector        — file type + platform detection (TikTok / Shopee / unknown)
-        │     normalizer      — column alias resolution (EN + VI names, per platform)
-        │     order_parser    — parse_order_csv() (TikTok + Shopee)
-        │     settlement_parser — parse_settlement_csv() (payout + extended fields)
-        │     transaction_parser — parse_transaction_csv()
+        │     detector            — file type + platform detection (TikTok / Shopee / unknown)
+        │     normalizer          — column alias resolution (EN + VI names, per platform)
+        │     order_parser        — parse_order_csv() (TikTok + Shopee)
+        │     settlement_parser   — parse_settlement_csv() (payout + extended fields)
+        │     transaction_parser  — parse_transaction_csv()
+        │
+        ├── Creator CRM (app/services/creators/)
+        │     sync                — sync_creators_from_snapshot() — upsert from top_creators_json
+        │
+        ├── Notifications (app/services/)
+        │     push/web_push       — Web Push VAPID notifications
+        │     zalo/zns_client     — Zalo ZNS send (no-op until credentials set)
         │
         ├── Benchmarks (app/services/benchmarks/)
-        │     industry_data   — YouNet ECI 2025, 7 categories, versioned (BENCHMARK_VERSION)
+        │     industry_data       — YouNet ECI 2025, 7 categories, versioned (BENCHMARK_VERSION)
         │
         ├── AI Services (app/services/ai/) — 5 functions, all tier-aware + guardrail pipeline
-        │     import_rescue   — file format error diagnosis
-        │     aha_narrator    — weekly business summary with key insight
-        │     action_coach    — concrete next-step recommendation per action trigger
-        │     refund_clusterer — cluster refund reasons into ≤5 groups (Sonnet)
-        │     weekly_receipt  — Monday savings digest with mandatory disclaimer check
+        │     import_rescue       — file format error diagnosis
+        │     aha_narrator        — weekly business summary with key insight
+        │     action_coach        — concrete next-step recommendation per action trigger
+        │     refund_clusterer    — cluster refund reasons into ≤5 groups (Sonnet)
+        │     weekly_receipt      — Monday savings digest with mandatory disclaimer check
         │
         └── ARQ Worker (job_timeout=300s, max_jobs=10)
-              process_import              — on demand (file upload)
-              trigger_weekly_receipts     — cron Mon 01:00 UTC (08:00 VN): enqueues per-shop jobs
-              process_weekly_receipt_for_shop — per-shop job (isolated, ARQ _job_id dedup)
-              verify_action_impact        — on demand, deferred 7 days post-completion
-              cleanup_stuck_imports       — cron every hour :05 (marks stuck sessions failed)
+              process_import                   — on demand (file upload); auto-syncs creator profiles
+              trigger_weekly_receipts          — cron Mon 01:00 UTC (08:00 VN): enqueues per-shop jobs
+              process_weekly_receipt_for_shop  — per-shop job (isolated, ARQ _job_id dedup)
+              trigger_daily_alerts             — cron daily 01:15 UTC (08:15 VN): Web Push if critical signal
+              verify_action_impact             — on demand, deferred 7 days post-completion
+              cleanup_stuck_imports            — cron every hour :05 (marks stuck sessions failed)
         │
   ┌─────┴──────┬────────────┐
   PostgreSQL   Redis        Supabase
   (data,       (ARQ queue,  (auth + JWT
-  8 migrations) AI budget)   + file storage)
+  15 migrations) AI budget,   + file storage)
+               daily_alert
+               idempotency)
 ```
 
 ---
@@ -142,9 +170,11 @@ Backend (FastAPI)
 | Re-analysis / Recompute | — | ✓ | ✓ |
 | Industry Benchmark | — | ✓ | ✓ |
 | CSV Export | — | ✓ | ✓ |
-| Creator CRM | — | basic | full |
+| Settlement Reconciliation | — | ✓ | ✓ |
+| Creator CRM | — | ✓ | ✓ |
+| Daily Web Push Alerts | ✓ | ✓ | ✓ |
+| Zalo ZNS Notifications | — | ✓ | ✓ |
 | Shopee / Lazada import | — | — | ✓ |
-| Zalo OA Push | — | ✓ | ✓ |
 
 ---
 
@@ -225,6 +255,15 @@ ALLOWED_ORIGINS=["http://localhost:3000"]
 SENDGRID_API_KEY=...
 EMAIL_FROM_ADDRESS=noreply@tikai.vn
 
+# Web Push — optional, required for daily push alerts
+VAPID_PRIVATE_KEY=...
+VAPID_PUBLIC_KEY=...
+VAPID_CLAIMS_EMAIL=admin@tikai.vn
+
+# Zalo ZNS — optional, feature disables cleanly when absent
+ZALO_OA_ID=...
+ZALO_ZNS_ACCESS_TOKEN=...
+
 # Monitoring — optional
 SENTRY_DSN=https://xxx@sentry.io/123456
 ```
@@ -284,7 +323,7 @@ alembic downgrade -1           # undo last migration
 alembic revision --autogenerate -m "add_column_x"   # create new
 ```
 
-There are currently **8 migrations** (0001–0008). Migration env uses `pg_advisory_lock` to prevent concurrent execution across multiple replicas — only one process runs migrations at a time; others wait then detect no pending work.
+There are currently **15 migrations** (0001–0015). Migration env uses `pg_advisory_lock` to prevent concurrent execution across multiple replicas — only one process runs migrations at a time; others wait then detect no pending work.
 
 ---
 
@@ -300,12 +339,14 @@ There are currently **8 migrations** (0001–0008). Migration env uses `pg_advis
 ### Pre-deploy Checklist
 
 ```
-□ alembic upgrade head ran against production DB
+□ alembic upgrade head ran against production DB (migrations 0001–0015)
 □ ALLOWED_ORIGINS set to production frontend URL
 □ ANTHROPIC_API_KEY configured
 □ SENTRY_DSN configured
-□ Worker service running (check Railway logs for trigger_weekly_receipts cron)
-□ GET /healthz → {"status":"ok","version":"2.0.2"}
+□ VAPID_PRIVATE_KEY + VAPID_PUBLIC_KEY configured for Web Push (optional but recommended)
+□ ZALO_OA_ID + ZALO_ZNS_ACCESS_TOKEN set if Zalo ZNS is required (optional)
+□ Worker service running (check Railway logs for trigger_weekly_receipts + trigger_daily_alerts crons)
+□ GET /healthz → {"status":"ok","version":"2.2.0"}
 □ GET /readyz  → {"status":"ready","db":"ok","redis":"ok"}
 ```
 
@@ -363,8 +404,9 @@ There are currently **8 migrations** (0001–0008). Migration env uses `pg_advis
 
 | Version | Summary |
 |---|---|
-| latest | BUG-SIM-01: simulator now uses `total_quantity` (units sold) instead of `order_count` for COGS. Settlement parser extended with `transaction_type`, `fee_amount`, `description`, `adjustment_type`, `seller_sku` columns. Worker converted to per-shop ARQ jobs (`trigger_weekly_receipts` + `process_weekly_receipt_for_shop`). New: `GET /insights/{id}/export.csv` (CSV export, Pro+), `POST /tools/simulate-campaign` (multi-SKU campaign pre-check), `POST /cogs/bulk-import` (CSV COGS upload). |
-| 2.0.2 | Per-order FeeConfig selection (mid-period fee changes apply per-row, not retroactively). Shopee COGS cascade (parent→variation SKU lookup). Benchmark versioning (`benchmark_version` + `last_updated` in API). Tier-aware AI budget ($0.15/$0.50/$1.00 for free/pro/business). Migration `pg_advisory_lock` for multi-replica safety. ARQ `_job_id` dedup on import enqueue. SKU Health Score, Creator Scorecard, What-If Simulator, Price Recommender, Industry Benchmark, Cash Flow Timeline. Security hardening (XFF rate limit, IDOR guard, PII stripping), architectural fixes (connection pool, SQLAlchemy 2.x session lifecycle), financial logic fixes (margin denominator, COGS key normalization), AI safety (injection patterns, startup checks). |
+| 2.2.0 | Settlement reconciliation (`POST /v1/reconcile`, `/doi-soat` page). Creator CRM (`/creators` page, auto-sync on import). Daily Web Push alerts (ARQ cron, Redis idempotency). Zalo ZNS scaffolding. WowScreen 3-way conditional. Quantified COGS nudge in Overview. Nav: Creators + Đối soát links. 17 new unit tests. |
+| 2.1.0 | BUG-SIM-01: simulator now uses `total_quantity` (units sold) instead of `order_count` for COGS. Settlement parser extended with `transaction_type`, `fee_amount`, `description`, `adjustment_type`, `seller_sku` columns. Worker converted to per-shop ARQ jobs (`trigger_weekly_receipts` + `process_weekly_receipt_for_shop`). New: `GET /insights/{id}/export.csv` (CSV export, Pro+), `POST /tools/simulate-campaign` (multi-SKU campaign pre-check), `POST /cogs/bulk-import` (CSV COGS upload). |
+| 2.0.2 | Per-order FeeConfig selection (mid-period fee changes apply per-row, not retroactively). Shopee COGS cascade (parent→variation SKU lookup). Benchmark versioning (`benchmark_version` + `last_updated` in API). Tier-aware AI budget ($0.15/$0.50/$1.00 for free/pro/business). Migration `pg_advisory_lock` for multi-replica safety. ARQ `_job_id` dedup on import enqueue. SKU Health Score, Creator Scorecard, What-If Simulator, Price Recommender, Industry Benchmark, Cash Flow Timeline. |
 | 2.0.1 | Shopee platform support (parser, platform-aware column aliases, fee config). `transaction_fee` + `order_processing_fee` fields on orders and FeeConfig. |
 | 2.0.0 | Initial production release. |
 

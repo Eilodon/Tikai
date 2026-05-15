@@ -11,9 +11,7 @@ INVARIANT: never raises — fire-and-forget. One shop failing must not affect ot
 Budget guard: send at most 1 push per shop per 24h (idempotency via Redis key TTL).
 """
 
-import asyncio
 from decimal import Decimal
-from typing import TYPE_CHECKING
 
 import structlog
 from sqlalchemy import select
@@ -21,9 +19,6 @@ from sqlalchemy import select
 from app.models.insight_snapshot import InsightSnapshot
 from app.models.shop import Shop
 from app.services.push.web_push import send_push_to_shop
-
-if TYPE_CHECKING:
-    from datetime import datetime  # noqa: F401
 
 log = structlog.get_logger()
 
@@ -46,7 +41,7 @@ def _build_alert_message(snapshot: InsightSnapshot) -> tuple[str, str] | None:
     skus = snapshot.top_skus_json or []
 
     if leaks:
-        top_leak = max(leaks, key=lambda l: Decimal(str(l.get("estimated_loss", "0"))))
+        top_leak = max(leaks, key=lambda leak: Decimal(str(leak.get("estimated_loss", "0"))))
         loss = Decimal(str(top_leak.get("estimated_loss", "0")))
         if loss >= ALERT_LEAK_THRESHOLD:
             name = top_leak.get("name", "")

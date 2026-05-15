@@ -262,6 +262,79 @@ function NotificationSettings({ token, initialEmail, initialEnabled }: {
   )
 }
 
+// ── Zalo ZNS Settings ─────────────────────────────────────────────────────────
+
+function ZaloSettings({ token, initialPhone, initialEnabled }: {
+  token: string
+  initialPhone?: string | null
+  initialEnabled?: boolean
+}) {
+  const [phone, setPhone] = useState(initialPhone ?? "")
+  const [enabled, setEnabled] = useState(initialEnabled ?? false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function handleSave() {
+    setSaving(true); setErr(null)
+    try {
+      await shopsApi.updateMe(token, {
+        seller_phone: phone || null,
+        zns_enabled: enabled,
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch (e: any) {
+      setErr(e?.message ?? "Lưu thất bại.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <label className="flex items-center gap-3 cursor-pointer select-none">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => setEnabled(!enabled)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1
+                      ${enabled ? "bg-blue-600" : "bg-gray-200"}`}
+        >
+          <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform
+                            ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
+        </button>
+        <span className="text-sm font-medium text-gray-900">Nhận thông báo Zalo (ZNS)</span>
+      </label>
+
+      {enabled && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại Zalo</label>
+          <input
+            type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+            placeholder="0901234567"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-xs"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            Số điện thoại đã đăng ký Zalo để nhận thông báo P&L hàng tuần.
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button onClick={handleSave} disabled={saving}
+          className="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg font-medium
+                     hover:bg-gray-700 disabled:opacity-50 transition-colors">
+          {saving ? "Đang lưu..." : "Lưu"}
+        </button>
+        {saved && <span className="text-sm text-green-600">✓ Đã lưu</span>}
+        {err && <span className="text-sm text-red-600">{err}</span>}
+      </div>
+    </div>
+  )
+}
+
 // ── Main Settings Page ────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -345,8 +418,21 @@ export default function SettingsPage() {
         </p>
         <NotificationSettings
           token={token}
-          initialEmail={(shop as any)?.notification_email}
-          initialEnabled={(shop as any)?.email_digest_enabled ?? false}
+          initialEmail={shop?.notification_email}
+          initialEnabled={shop?.email_digest_enabled ?? false}
+        />
+      </div>
+
+      {/* Zalo ZNS */}
+      <div className="bg-white rounded-xl border p-6">
+        <h2 className="font-semibold mb-1">Thông báo Zalo (ZNS)</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Nhận báo cáo P&L tóm tắt qua Zalo ZNS. Cần gói Pro và số điện thoại đã đăng ký Zalo.
+        </p>
+        <ZaloSettings
+          token={token}
+          initialPhone={shop?.seller_phone}
+          initialEnabled={shop?.zns_enabled ?? false}
         />
       </div>
 

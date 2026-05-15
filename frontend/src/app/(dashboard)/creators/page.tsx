@@ -136,7 +136,6 @@ function CreatorDetail({ creator }: { creator: CreatorProfileResponse }) {
   const [note, setNote] = useState(creator.internal_note ?? "")
   const [zalo, setZalo] = useState(creator.contact_zalo ?? "")
   const [status, setStatus] = useState(creator.status)
-  const wastedComm = parseFloat(creator.commission_on_refunded_orders)
 
   async function handleSave() {
     await update.mutateAsync({
@@ -151,7 +150,7 @@ function CreatorDetail({ creator }: { creator: CreatorProfileResponse }) {
 
   return (
     <div className="border-t bg-gray-50 px-4 py-4 space-y-4">
-      {wastedComm > 0 && (
+      {parseFloat(creator.commission_on_refunded_orders) > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs">
           <p className="text-red-700">
             <strong>{formatVND(creator.commission_on_refunded_orders)}</strong> hoa hồng đã trả cho creator này

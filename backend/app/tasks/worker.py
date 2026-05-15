@@ -15,9 +15,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
 from app.services.email.client import send_weekly_digest
+from app.tasks.daily_alerts import trigger_daily_alerts
 from app.tasks.process_import import process_import
 from app.tasks.verify_action_impact import verify_action_impact
-from app.tasks.daily_alerts import trigger_daily_alerts
 
 settings = get_settings()
 log = structlog.get_logger()

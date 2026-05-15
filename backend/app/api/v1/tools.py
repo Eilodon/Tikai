@@ -115,7 +115,9 @@ async def price_recommend(
 # ── Fee Schedule (public, no auth) ───────────────────────────────────────────
 
 @router.get("/tools/fee-schedule/public")
+@limiter.limit("30/minute")
 async def get_fee_schedule_public(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Return current TikTok Shop fee rates for public calculator. No auth required."""

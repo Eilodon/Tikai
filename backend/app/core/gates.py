@@ -42,7 +42,7 @@ TIER_GATES: dict[str, dict] = {
         Feature.BENCHMARKS: False,
         Feature.CSV_EXPORT: False,
         Feature.CREATOR_CRM: False,
-        Feature.SHOPEE_LAZADA: True,
+        Feature.SHOPEE_LAZADA: False,
         Feature.AI_CALLS_PER_IMPORT: 5,
     },
     "pro": {

@@ -54,6 +54,8 @@ class CreatorSummary:
     # Feature 4: Creator Scorecard
     performance_label: Literal["star", "break_even", "losing"] = "break_even"
     suggested_max_commission_rate: Decimal | None = None
+    # Commission paid on orders later refunded (non-clawback: TikTok keeps it)
+    commission_on_refunded_orders: Decimal = Decimal("0")
 
 
 def _compute_sku_health(
@@ -206,9 +208,12 @@ def calculate_creator_summaries(rows: list[RawOrderRow]) -> list[CreatorSummary]
             "gmv": Decimal("0"),
             "net_revenue": Decimal("0"),
             "commission": Decimal("0"),
+            "commission_on_refunds": Decimal("0"),
             "order_count": 0,
         }
     )
+
+    _refund_statuses = {"refunded", "returned", "cancelled"}
 
     for row in rows:
         if not row.creator_id:
@@ -219,6 +224,8 @@ def calculate_creator_summaries(rows: list[RawOrderRow]) -> list[CreatorSummary]
         a["net_revenue"] += calculate_net_revenue(row)
         a["commission"] += row.affiliate_commission
         a["order_count"] += 1
+        if row.status.lower() in _refund_statuses:
+            a["commission_on_refunds"] += row.affiliate_commission
 
     summaries: list[CreatorSummary] = []
     for creator_id, a in agg.items():
@@ -264,6 +271,7 @@ def calculate_creator_summaries(rows: list[RawOrderRow]) -> list[CreatorSummary]
                 revenue_efficiency=revenue_efficiency,
                 performance_label=performance_label,
                 suggested_max_commission_rate=suggested_max_commission_rate,
+                commission_on_refunded_orders=a["commission_on_refunds"],
             )
         )
 

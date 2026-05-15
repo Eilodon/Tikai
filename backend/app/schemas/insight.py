@@ -21,6 +21,7 @@ class LeakItem(BaseModel):
         "cogs_missing",
         "refund_spike",
         "commission_exceeds_margin",
+        "shipping_weight_mismatch",
     ]
     confidence: ConfidenceLevel
     can_act_now: bool
@@ -85,6 +86,8 @@ class CreatorSummaryItem(BaseModel):
     # Feature 4: Creator Scorecard
     performance_label: Literal["star", "break_even", "losing"] = "break_even"
     suggested_max_commission_rate: Decimal | None = None
+    # Commission paid on refunded orders that TikTok does NOT clawback
+    commission_on_refunded_orders: Decimal = Decimal("0")
 
 
 class InsightSnapshotResponse(BaseModel):

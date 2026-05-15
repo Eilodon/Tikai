@@ -41,6 +41,7 @@ from app.schemas.insight import (
 from app.services.benchmarks.industry_data import LAST_UPDATED, Category, compare_to_industry
 from app.services.rule_engine import FeeConfigData, build_insight
 from app.services.rule_engine.baselines import CATEGORY_REFUND_BASELINES
+from app.services.rule_engine.price_recommender import recommend_price
 
 MAX_ORDERS_RECOMPUTE = 50_000  # cap for recompute endpoint to prevent OOM
 
@@ -508,6 +509,7 @@ async def recompute_insight(
                 "suggested_max_commission_rate": str(c.suggested_max_commission_rate)
                 if c.suggested_max_commission_rate is not None
                 else None,
+                "commission_on_refunded_orders": str(c.commission_on_refunded_orders),
             }
             for c in insight_data.top_creators
         ],
@@ -535,6 +537,154 @@ async def recompute_insight(
 
     log.info("recompute_insight.done", shop_id=str(shop.id), snapshot_id=str(new_snapshot.id))
     return _to_response(new_snapshot)
+
+
+# ── Price Floor Dashboard ─────────────────────────────────────────────────────
+
+
+@router.get("/insights/{snapshot_id}/price-floors")
+async def get_price_floors(
+    snapshot_id: uuid.UUID,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """
+    Feature: Price Floor Dashboard — "giá sàn" per SKU.
+
+    For each top SKU, computes:
+    - price_floor_at_0_margin: minimum selling price to break even
+    - price_floor_at_10_margin: minimum to reach 10% margin
+    - buffer_vnd: gap between avg selling price and break-even floor
+    - risk_level: "high" if buffer < 15% of floor, "medium" < 30%, "low" otherwise
+
+    Only SKUs with COGS data can compute meaningful floors. SKUs without COGS
+    return risk_level="unknown".
+    """
+    require_feature(shop, Feature.BENCHMARKS)
+
+    snapshot = await db.scalar(
+        select(InsightSnapshot).where(
+            InsightSnapshot.id == snapshot_id,
+            InsightSnapshot.shop_id == shop.id,
+        )
+    )
+    if not snapshot:
+        raise HTTPException(
+            404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy snapshot."}},
+        )
+
+    # Load current fee config for rate data
+    fee_config_row = await db.scalar(
+        select(FeeConfig)
+        .where(FeeConfig.platform == "tiktok")
+        .order_by(FeeConfig.effective_from.desc())
+        .limit(1)
+    )
+
+    platform_commission_rate = (
+        fee_config_row.platform_commission_rate if fee_config_row else Decimal("0.125")
+    )
+    transaction_fee_rate = (
+        fee_config_row.transaction_fee_rate if fee_config_row else Decimal("0.06")
+    )
+    order_processing_fee = (
+        fee_config_row.order_processing_fee_per_order if fee_config_row else Decimal("3000")
+    )
+
+    raw_cogs = shop.cogs_map or {}
+    cogs_map = {str(k).strip(): Decimal(str(v)) for k, v in raw_cogs.items() if v}
+
+    top_skus = _safe_parse(SKUSummaryItem, snapshot.top_skus_json or [])
+
+    results = []
+    for sku in top_skus:
+        cogs_per_unit = cogs_map.get(sku.sku_id)
+
+        # Estimate per-SKU rates from aggregated data
+        sku_gmv = sku.gmv if sku.gmv > 0 else Decimal("1")
+        affiliate_rate = sku.affiliate_commission / sku_gmv
+        voucher_rate = sku.voucher_cost / sku_gmv
+
+        # Average selling price (GMV / units sold)
+        units = sku.total_quantity if sku.total_quantity > 0 else sku.order_count or 1
+        avg_selling_price = sku_gmv / Decimal(units)
+
+        if cogs_per_unit is None:
+            results.append(
+                {
+                    "sku_id": sku.sku_id,
+                    "sku_name": sku.sku_name,
+                    "avg_selling_price": str(avg_selling_price.quantize(Decimal("1"))),
+                    "price_floor_at_0_margin": None,
+                    "price_floor_at_10_margin": None,
+                    "current_margin_pct": str(sku.margin_pct)
+                    if sku.margin_pct is not None
+                    else None,
+                    "buffer_vnd": None,
+                    "risk_level": "unknown",
+                }
+            )
+            continue
+
+        try:
+            rec_0 = recommend_price(
+                cogs_per_unit=cogs_per_unit,
+                target_margin_pct=Decimal("0"),
+                platform_commission_rate=platform_commission_rate,
+                transaction_fee_rate=transaction_fee_rate,
+                order_processing_fee=order_processing_fee,
+                affiliate_rate=affiliate_rate,
+                voucher_rate=voucher_rate,
+            )
+            floor_0 = rec_0.min_price
+        except ValueError:
+            floor_0 = None
+
+        try:
+            rec_10 = recommend_price(
+                cogs_per_unit=cogs_per_unit,
+                target_margin_pct=Decimal("0.10"),
+                platform_commission_rate=platform_commission_rate,
+                transaction_fee_rate=transaction_fee_rate,
+                order_processing_fee=order_processing_fee,
+                affiliate_rate=affiliate_rate,
+                voucher_rate=voucher_rate,
+            )
+            floor_10 = rec_10.min_price
+        except ValueError:
+            floor_10 = None
+
+        buffer_vnd = (avg_selling_price - floor_0).quantize(Decimal("1")) if floor_0 else None
+        if buffer_vnd is None or floor_0 is None:
+            risk_level = "unknown"
+        elif buffer_vnd < 0:
+            risk_level = "critical"
+        elif floor_0 > 0 and buffer_vnd / floor_0 < Decimal("0.15"):
+            risk_level = "high"
+        elif floor_0 > 0 and buffer_vnd / floor_0 < Decimal("0.30"):
+            risk_level = "medium"
+        else:
+            risk_level = "low"
+
+        results.append(
+            {
+                "sku_id": sku.sku_id,
+                "sku_name": sku.sku_name,
+                "avg_selling_price": str(avg_selling_price.quantize(Decimal("1"))),
+                "price_floor_at_0_margin": str(floor_0) if floor_0 is not None else None,
+                "price_floor_at_10_margin": str(floor_10) if floor_10 is not None else None,
+                "current_margin_pct": str(sku.margin_pct) if sku.margin_pct is not None else None,
+                "buffer_vnd": str(buffer_vnd) if buffer_vnd is not None else None,
+                "risk_level": risk_level,
+            }
+        )
+
+    return {
+        "snapshot_id": str(snapshot_id),
+        "fee_config_version": snapshot.fee_config_version,
+        "skus": results,
+    }
 
 
 # ── CSV Export ────────────────────────────────────────────────────────────────

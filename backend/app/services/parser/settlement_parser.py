@@ -55,6 +55,18 @@ class SettlementRow:
         self.adjustment_type = adjustment_type
         self.seller_sku = seller_sku
 
+    @property
+    def is_shipping_weight_adjustment(self) -> bool:
+        """Return True when this row represents a shipping weight discrepancy deduction.
+
+        TikTok (and carriers J&T/GHN) silently deduct when actual package weight
+        exceeds the weight declared in the product listing.
+        """
+        combined = (self.adjustment_type + " " + self.description).lower()
+        return "shipping" in combined and (
+            "weight" in combined or "adjust" in combined or "discrepancy" in combined
+        )
+
 
 def parse_settlement_csv(file_bytes: bytes, filename: str) -> list[SettlementRow]:
     """Parse TikTok Settlement Export for actual payout verification."""

@@ -38,7 +38,7 @@ from app.schemas.insight import (
     LeakItem,
     SKUSummaryItem,
 )
-from app.services.benchmarks.industry_data import Category, compare_to_industry
+from app.services.benchmarks.industry_data import LAST_UPDATED, Category, compare_to_industry
 from app.services.rule_engine import FeeConfigData, build_insight
 from app.services.rule_engine.baselines import CATEGORY_REFUND_BASELINES
 
@@ -196,6 +196,7 @@ async def get_benchmark(
     """
     Feature 5: So sánh chỉ số shop với benchmark ngành.
     INVARIANT: mỗi comparison có source field rõ ràng.
+    Response includes data_age_days so callers can display data freshness.
     """
     snapshot = await db.scalar(
         select(InsightSnapshot).where(
@@ -233,9 +234,13 @@ async def get_benchmark(
         category=category,
     )
 
+    from datetime import date
+
+    data_age_days = (date.today() - LAST_UPDATED).days
     return {
         "category": category,
         "comparisons": [c.model_dump() for c in comparisons],
+        "data_age_days": data_age_days,
     }
 
 
@@ -433,6 +438,7 @@ async def recompute_insight(
         shop_id=str(shop.id),
         rule_engine_version=settings.rule_engine_version,
         top_n_leaks=settings.ai_top_n_leaks,
+        shop_category=getattr(shop, "category", None),
     )
 
     # 6. Save new snapshot (recomputed)

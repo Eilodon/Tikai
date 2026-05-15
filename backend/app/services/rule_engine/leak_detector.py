@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
-from app.services.rule_engine.baselines import DEFAULT_BASELINE
+from app.services.rule_engine.baselines import get_refund_baseline_for_shop_category
 from app.services.rule_engine.pl_calculator import CreatorSummary, SKUSummary
 
 LeakReason = Literal[
@@ -35,9 +35,13 @@ def detect_top_leaks(
     creator_summaries: list[CreatorSummary],
     category_baselines: dict[str, Decimal],
     top_n: int = 3,
+    shop_category: str | None = None,
 ) -> list[LeakItem]:
     """
     Collect all leaks, score by estimated_loss, return top_n.
+
+    Baseline precedence: per-SKU override (category_baselines) → shop-level category
+    benchmark (industry_data.py) → global DEFAULT_BASELINE.
     """
     leaks: list[LeakItem] = []
 
@@ -64,9 +68,9 @@ def detect_top_leaks(
                 )
             )
 
-        # Refund spike vs category baseline
-        # FIX BUG-H5: use DEFAULT_BASELINE (8%) not 5% — reduces false positives for beauty/fashion
-        baseline = category_baselines.get(sku.sku_id, DEFAULT_BASELINE)
+        # Refund spike vs category baseline (per-SKU override → shop category → global default)
+        shop_fallback = get_refund_baseline_for_shop_category(shop_category)
+        baseline = category_baselines.get(sku.sku_id, shop_fallback)
         if sku.refund_rate > baseline * Decimal("1.5"):
             leaks.append(
                 LeakItem(

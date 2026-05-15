@@ -1,7 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Valid category slugs — must match industry_data.py Category Literal
+_VALID_CATEGORIES = {"fashion", "beauty", "food", "electronics", "home", "baby", "other"}
 
 
 class CreateShopRequest(BaseModel):
@@ -12,6 +15,14 @@ class CreateShopRequest(BaseModel):
 class UpdateShopRequest(BaseModel):
     shop_name: str | None = Field(default=None, min_length=2, max_length=200)
     tiktok_shop_id: str | None = Field(default=None, max_length=100)
+    category: str | None = Field(default=None, max_length=50)
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str | None) -> str | None:
+        if v is not None and v not in _VALID_CATEGORIES:
+            raise ValueError(f"category must be one of {sorted(_VALID_CATEGORIES)}")
+        return v
 
 
 class ShopResponse(BaseModel):
@@ -29,3 +40,5 @@ class ShopResponse(BaseModel):
     # P4-2: trial fields — null for non-trial or expired shops
     trial_expires_at: datetime | None = None
     created_at: datetime
+    # v2.1.0: shop category for category-aware leak detection
+    category: str | None = None

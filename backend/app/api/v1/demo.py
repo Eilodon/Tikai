@@ -131,7 +131,7 @@ _DEMO_SNAPSHOT = {
     "rule_engine_version": "v2.1.0",
     "fee_config_version": "2026-VN-v3",
     "days_in_period": 14,
-    "is_partial_period": True,
+    "is_partial_period": False,
     "is_first_import": False,
     "created_at": "2026-05-14T08:00:00+00:00",
 }

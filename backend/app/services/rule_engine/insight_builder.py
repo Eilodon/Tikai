@@ -70,6 +70,7 @@ def build_insight(
     shop_id: str,
     rule_engine_version: str = "0.1.0",
     top_n_leaks: int = 3,
+    shop_category: str | None = None,
 ) -> InsightData:
     """
     Full pipeline:
@@ -140,9 +141,15 @@ def build_insight(
 
     # 7. Leaks + triggers
     top_leaks = detect_top_leaks(
-        sku_summaries, creator_summaries, category_baselines, top_n=top_n_leaks
+        sku_summaries,
+        creator_summaries,
+        category_baselines,
+        top_n=top_n_leaks,
+        shop_category=shop_category,
     )
-    action_triggers = evaluate_rules(sku_summaries, creator_summaries, category_baselines)
+    action_triggers = evaluate_rules(
+        sku_summaries, creator_summaries, category_baselines, shop_category=shop_category
+    )
 
     days_in_period = (period_end - period_start).days + 1
     is_partial_period = days_in_period < 5  # Less than 5 days = incomplete week

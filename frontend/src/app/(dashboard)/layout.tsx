@@ -16,6 +16,8 @@ export default function DashboardLayout({
         <Link href="/actions" className="text-sm text-gray-600 hover:text-gray-900 shrink-0">Hành động</Link>
         <Link href="/tools/campaign" className="text-sm text-gray-600 hover:text-gray-900 shrink-0">Kiểm tra chiến dịch</Link>
         <Link href="/livestream" className="text-sm text-gray-600 hover:text-gray-900 shrink-0">Livestream</Link>
+        <Link href="/creators" className="text-sm text-gray-600 hover:text-gray-900 shrink-0">Creators</Link>
+        <Link href="/doi-soat" className="text-sm text-gray-600 hover:text-gray-900 shrink-0">Đối soát</Link>
         <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900 shrink-0">Cài đặt</Link>
       </nav>
       <main className="px-6 py-6 max-w-4xl mx-auto">{children}</main>

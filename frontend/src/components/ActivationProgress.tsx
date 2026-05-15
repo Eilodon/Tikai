@@ -38,7 +38,7 @@ const STEPS = [
     key: "hasReconciledSettlement" as const,
     label: "Upload settlement để đối soát",
     linkLabel: "Đối soát ngay →",
-    href: "/import?tab=settlement",
+    href: "/doi-soat",
   },
 ]
 

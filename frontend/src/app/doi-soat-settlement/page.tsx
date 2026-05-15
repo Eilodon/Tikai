@@ -117,7 +117,7 @@ export default function DoiSoatSettlementPage() {
             Miễn phí, không cần cài đặt.
           </p>
           <a
-            href="/"
+            href="/login?return_to=/doi-soat"
             className="inline-block bg-white text-gray-900 text-sm font-semibold px-6 py-3 rounded-xl hover:bg-gray-100 transition-colors"
           >
             Đối soát Settlement của bạn →

@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_claims_email: str = "admin@tikai.vn"
 
+    # Zalo ZNS (optional — sender no-ops if not set)
+    zalo_oa_id: str = ""
+    zalo_zns_access_token: str = ""
+
+    @property
+    def zns_enabled(self) -> bool:
+        return bool(self.zalo_oa_id and self.zalo_zns_access_token)
+
     # Admin
     admin_secret: str = ""
 

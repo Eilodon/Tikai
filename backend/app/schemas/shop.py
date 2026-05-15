@@ -15,7 +15,7 @@ class CreateShopRequest(BaseModel):
 class UpdateShopRequest(BaseModel):
     shop_name: str | None = Field(default=None, min_length=2, max_length=200)
     tiktok_shop_id: str | None = Field(default=None, max_length=100)
-    category: str | None = Field(default=None)
+    category: str | None = Field(default=None, max_length=50)
 
     @field_validator("category")
     @classmethod

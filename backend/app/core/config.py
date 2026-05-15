@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # Email (SendGrid — optional, digest disabled if not set)
     sendgrid_api_key: str = ""
-    email_from_address: str = "digest@tikai.vn"   # override via EMAIL_FROM_ADDRESS env var
+    email_from_address: str = "digest@tikai.vn"  # override via EMAIL_FROM_ADDRESS env var
     email_from_name: str = "Tikai"
     # v2.0.1: app_base_url used for email CTA links — never hardcode tikai.vn in code
     # Default is production URL; override with staging URL in staging env
@@ -124,10 +124,10 @@ class Settings(BaseSettings):
     def ai_budget_for_tier(self, tier: str) -> Decimal:
         """Return the monthly AI dollar budget for a given subscription tier."""
         mapping = {
-            "free":      self.ai_max_cost_per_month_usd_free,
-            "pro":       self.ai_max_cost_per_month_usd_pro,
-            "pro_trial": self.ai_max_cost_per_month_usd_pro,   # trial gets pro budget
-            "business":  self.ai_max_cost_per_month_usd_business,
+            "free": self.ai_max_cost_per_month_usd_free,
+            "pro": self.ai_max_cost_per_month_usd_pro,
+            "pro_trial": self.ai_max_cost_per_month_usd_pro,  # trial gets pro budget
+            "business": self.ai_max_cost_per_month_usd_business,
         }
         return Decimal(mapping.get(tier, self.ai_max_cost_per_month_usd_free))
 

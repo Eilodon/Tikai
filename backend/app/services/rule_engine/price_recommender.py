@@ -4,22 +4,23 @@ INVARIANT: KHÔNG dùng float. KHÔNG gọi AI. KHÔNG gọi DB.
 INVARIANT: min_price >= cogs_per_unit.
 INVARIANT: raises ValueError nếu total_rate_deductions >= 1.0 (impossible margin).
 """
+
 from dataclasses import dataclass
 from decimal import Decimal
 
 
 @dataclass
 class PriceRecommendation:
-    min_price: Decimal           # giá bán tối thiểu để đạt target margin
-    target_margin_pct: Decimal   # margin seller muốn (input)
-    actual_margin_pct: Decimal   # margin thực với giá này (verify == target)
+    min_price: Decimal  # giá bán tối thiểu để đạt target margin
+    target_margin_pct: Decimal  # margin seller muốn (input)
+    actual_margin_pct: Decimal  # margin thực với giá này (verify == target)
     breakdown: dict[str, Decimal]
-    warning: str | None          # e.g. "Giá này cao hơn thị trường 40%"
+    warning: str | None  # e.g. "Giá này cao hơn thị trường 40%"
 
 
 def recommend_price(
     cogs_per_unit: Decimal,
-    target_margin_pct: Decimal,            # 0.0 → 1.0
+    target_margin_pct: Decimal,  # 0.0 → 1.0
     platform_commission_rate: Decimal,
     transaction_fee_rate: Decimal,
     order_processing_fee: Decimal,

@@ -9,6 +9,7 @@ v1.0.0 FIXES:
   from export file (older TikTok exports don't have these columns)
 - import dataclasses moved to module level (was inside per-row loop — anti-pattern)
 """
+
 import dataclasses
 from dataclasses import dataclass, field
 from datetime import date
@@ -25,13 +26,14 @@ class FeeConfigData:
     v2.1.0: Added effective_from/effective_to for per-order date-based config selection
     (F-1B-01 follow-up: prevents mid-period rate changes from affecting all orders).
     """
+
     version: str
     platform_commission_rate: Decimal
     transaction_fee_rate: Decimal = Decimal("0")
     order_processing_fee_per_order: Decimal = Decimal("0")
     category_overrides: dict[str, Decimal] = field(default_factory=dict)
     effective_from: date | None = None  # inclusive lower bound
-    effective_to: date | None = None    # inclusive upper bound; None = current
+    effective_to: date | None = None  # inclusive upper bound; None = current
 
 
 def calculate_net_revenue(row: RawOrderRow) -> Decimal:
@@ -63,9 +65,7 @@ def calculate_net_revenue(row: RawOrderRow) -> Decimal:
     )
 
 
-def select_fee_config_for_date(
-    order_date: date, configs: "list[FeeConfigData]"
-) -> "FeeConfigData":
+def select_fee_config_for_date(order_date: date, configs: "list[FeeConfigData]") -> "FeeConfigData":
     """Pick the FeeConfig effective on order_date.
 
     Configs must be sorted by effective_from ascending.
@@ -75,7 +75,7 @@ def select_fee_config_for_date(
     """
     for cfg in reversed(configs):
         from_ok = cfg.effective_from is None or cfg.effective_from <= order_date
-        to_ok   = cfg.effective_to   is None or cfg.effective_to   >= order_date
+        to_ok = cfg.effective_to is None or cfg.effective_to >= order_date
         if from_ok and to_ok:
             return cfg
     return configs[0]
@@ -109,7 +109,8 @@ def apply_fee_config(
     for row in rows:
         fee_config = (
             select_fee_config_for_date(row.order_date, fee_configs)
-            if multi_config else fee_configs[0]
+            if multi_config
+            else fee_configs[0]
         )
         # ── Platform commission estimation ────────────────────────────────────
         if row.gmv > 0 and row.platform_commission == Decimal("0"):
@@ -157,7 +158,9 @@ def apply_fee_config(
     return updated, notes
 
 
-def safe_divide(numerator: Decimal, denominator: Decimal, default: Decimal = Decimal("0")) -> Decimal:
+def safe_divide(
+    numerator: Decimal, denominator: Decimal, default: Decimal = Decimal("0")
+) -> Decimal:
     """INVARIANT: always check denominator != 0."""
     if denominator == Decimal("0"):
         return default

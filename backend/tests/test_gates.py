@@ -1,9 +1,13 @@
 """Test feature gates (FIX GAP-M6)."""
+
 import pytest
 from fastapi import HTTPException
+
 from app.core.gates import (
-    Feature, TIER_GATES, get_gate_value, require_feature,
-    get_ai_calls_limit, get_history_weeks_limit,
+    Feature,
+    get_ai_calls_limit,
+    get_history_weeks_limit,
+    require_feature,
 )
 
 

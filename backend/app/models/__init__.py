@@ -8,7 +8,13 @@ from app.models.shop import Shop
 from app.models.weekly_receipt import WeeklyReceipt  # FIX BUG-05
 
 __all__ = [
-    "Base", "TimestampMixin",
-    "Shop", "Order", "ImportSession", "FeeConfig",
-    "InsightSnapshot", "AIAction", "WeeklyReceipt",
+    "Base",
+    "TimestampMixin",
+    "Shop",
+    "Order",
+    "ImportSession",
+    "FeeConfig",
+    "InsightSnapshot",
+    "AIAction",
+    "WeeklyReceipt",
 ]

@@ -2,6 +2,7 @@
 Leak Detector — ranks revenue leaks by estimated impact.
 INVARIANT: estimated_loss từ Rule Engine calculations, KHÔNG phải AI.
 """
+
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
@@ -10,8 +11,11 @@ from app.services.rule_engine.baselines import DEFAULT_BASELINE
 from app.services.rule_engine.pl_calculator import CreatorSummary, SKUSummary
 
 LeakReason = Literal[
-    "voucher_high", "affiliate_high", "cogs_missing",
-    "refund_spike", "commission_exceeds_margin",
+    "voucher_high",
+    "affiliate_high",
+    "cogs_missing",
+    "refund_spike",
+    "commission_exceeds_margin",
 ]
 
 
@@ -46,32 +50,49 @@ def detect_top_leaks(
         if sku.margin is not None and sku.margin < Decimal("0"):
             # Determine primary driver
             reason: LeakReason = (
-                "voucher_high" if sku.voucher_cost >= sku.affiliate_commission
-                else "affiliate_high"
+                "voucher_high" if sku.voucher_cost >= sku.affiliate_commission else "affiliate_high"
             )
-            leaks.append(LeakItem(
-                type="sku", id=sku.sku_id, name=sku.sku_name,
-                estimated_loss=abs(sku.margin),
-                reason=reason, confidence="high", can_act_now=True,
-            ))
+            leaks.append(
+                LeakItem(
+                    type="sku",
+                    id=sku.sku_id,
+                    name=sku.sku_name,
+                    estimated_loss=abs(sku.margin),
+                    reason=reason,
+                    confidence="high",
+                    can_act_now=True,
+                )
+            )
 
         # Refund spike vs category baseline
         # FIX BUG-H5: use DEFAULT_BASELINE (8%) not 5% — reduces false positives for beauty/fashion
         baseline = category_baselines.get(sku.sku_id, DEFAULT_BASELINE)
         if sku.refund_rate > baseline * Decimal("1.5"):
-            leaks.append(LeakItem(
-                type="sku", id=sku.sku_id, name=sku.sku_name,
-                estimated_loss=sku.net_revenue * sku.refund_rate,
-                reason="refund_spike", confidence="medium", can_act_now=True,
-            ))
+            leaks.append(
+                LeakItem(
+                    type="sku",
+                    id=sku.sku_id,
+                    name=sku.sku_name,
+                    estimated_loss=sku.net_revenue * sku.refund_rate,
+                    reason="refund_spike",
+                    confidence="medium",
+                    can_act_now=True,
+                )
+            )
 
         # Missing COGS — can't calculate loss, but flag it
         if sku.total_cogs is None:
-            leaks.append(LeakItem(
-                type="sku", id=sku.sku_id, name=sku.sku_name,
-                estimated_loss=Decimal("0"),  # unknown
-                reason="cogs_missing", confidence="low", can_act_now=False,
-            ))
+            leaks.append(
+                LeakItem(
+                    type="sku",
+                    id=sku.sku_id,
+                    name=sku.sku_name,
+                    estimated_loss=Decimal("0"),  # unknown
+                    reason="cogs_missing",
+                    confidence="low",
+                    can_act_now=False,
+                )
+            )
 
     # Creator leaks
     for creator in creator_summaries:
@@ -82,12 +103,17 @@ def detect_top_leaks(
             loss = creator.total_commission - creator.attributed_net_revenue
             loss = max(loss, Decimal("0"))
             confidence = "high" if creator.revenue_efficiency < Decimal("0.5") else "medium"
-            leaks.append(LeakItem(
-                type="creator", id=creator.creator_id, name=creator.creator_name,
-                estimated_loss=loss,
-                reason="commission_exceeds_margin",
-                confidence=confidence, can_act_now=True,
-            ))
+            leaks.append(
+                LeakItem(
+                    type="creator",
+                    id=creator.creator_id,
+                    name=creator.creator_name,
+                    estimated_loss=loss,
+                    reason="commission_exceeds_margin",
+                    confidence=confidence,
+                    can_act_now=True,
+                )
+            )
 
     # Deduplicate: keep highest estimated_loss per entity_id
     seen: dict[str, LeakItem] = {}

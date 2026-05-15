@@ -9,17 +9,17 @@ Covers:
 - Issue 6: Tier-aware AI budget (Settings.ai_budget_for_tier)
 - Issue 8: pg_advisory_lock in migration env + ARQ _job_id dedup
 """
+
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
-
 # ── Issue 3: Per-order FeeConfig ─────────────────────────────────────────────
+
 
 class TestPerOrderFeeConfig:
     def _make_config(self, version, rate, eff_from, eff_to=None):
         from app.services.rule_engine.fee_calculator import FeeConfigData
+
         return FeeConfigData(
             version=version,
             platform_commission_rate=Decimal(str(rate)),
@@ -29,6 +29,7 @@ class TestPerOrderFeeConfig:
 
     def _make_row(self, order_id, order_date, gmv=100000):
         from app.services.parser.base import RawOrderRow
+
         return RawOrderRow(
             tiktok_order_id=order_id,
             sku_id="SKU-1",
@@ -45,6 +46,7 @@ class TestPerOrderFeeConfig:
 
     def test_select_fee_config_for_date_picks_correct_config(self):
         from app.services.rule_engine.fee_calculator import select_fee_config_for_date
+
         old = self._make_config("v1", "0.10", date(2025, 1, 1), date(2025, 5, 10))
         new = self._make_config("v2", "0.145", date(2025, 5, 11), None)
 
@@ -54,6 +56,7 @@ class TestPerOrderFeeConfig:
 
     def test_apply_fee_config_uses_per_row_config(self):
         from app.services.rule_engine.fee_calculator import apply_fee_config
+
         old = self._make_config("v1", "0.10", date(2025, 1, 1), date(2025, 5, 10))
         new = self._make_config("v2", "0.145", date(2025, 5, 11), None)
 
@@ -72,15 +75,15 @@ class TestPerOrderFeeConfig:
     def test_single_config_backward_compat(self):
         """Passing a single FeeConfigData (not a list) still works."""
         from app.services.rule_engine.fee_calculator import FeeConfigData, apply_fee_config
-        single = FeeConfigData(
-            version="v1", platform_commission_rate=Decimal("0.10")
-        )
+
+        single = FeeConfigData(version="v1", platform_commission_rate=Decimal("0.10"))
         row = self._make_row("ORD-1", date(2025, 5, 1))
         updated, _ = apply_fee_config([row], single)
         assert updated[0].platform_commission == Decimal("10000")
 
     def test_build_insight_with_multiple_fee_configs_records_combined_version(self):
         from app.services.rule_engine.insight_builder import build_insight
+
         old = self._make_config("2025-VN-v1", "0.10", date(2025, 1, 1), date(2025, 5, 10))
         new = self._make_config("2025-VN-v2", "0.145", date(2025, 5, 11), None)
 
@@ -101,6 +104,7 @@ class TestPerOrderFeeConfig:
     def test_select_falls_back_to_first_config_when_no_match(self):
         """If order date is before all configs, use the oldest (fallback)."""
         from app.services.rule_engine.fee_calculator import select_fee_config_for_date
+
         cfg = self._make_config("v1", "0.10", date(2025, 6, 1), None)
         result = select_fee_config_for_date(date(2025, 1, 1), [cfg])
         assert result is cfg
@@ -108,9 +112,11 @@ class TestPerOrderFeeConfig:
 
 # ── Issue 2: COGS cascade parent→child ───────────────────────────────────────
 
+
 class TestCOGSParentCascade:
     def _make_shopee_row(self, sku_id, parent_sku_id, qty=1, gmv=100000):
         from app.services.parser.base import RawOrderRow
+
         return RawOrderRow(
             tiktok_order_id=f"ORD-{sku_id}",
             sku_id=sku_id,
@@ -129,6 +135,7 @@ class TestCOGSParentCascade:
 
     def test_variant_uses_parent_cogs_when_not_in_cogs_map(self):
         from app.services.rule_engine.pl_calculator import calculate_sku_summaries
+
         rows = [
             self._make_shopee_row("SHIRT-RED", "SHIRT-100", qty=2),
             self._make_shopee_row("SHIRT-BLUE", "SHIRT-100", qty=1),
@@ -146,6 +153,7 @@ class TestCOGSParentCascade:
 
     def test_variation_cogs_takes_precedence_over_parent(self):
         from app.services.rule_engine.pl_calculator import calculate_sku_summaries
+
         rows = [self._make_shopee_row("SHIRT-RED", "SHIRT-100", qty=1)]
         cogs_map = {
             "SHIRT-RED": Decimal("60000"),  # specific variation COGS
@@ -157,6 +165,7 @@ class TestCOGSParentCascade:
 
     def test_no_cogs_when_neither_variant_nor_parent_in_map(self):
         from app.services.rule_engine.pl_calculator import calculate_sku_summaries
+
         rows = [self._make_shopee_row("SHIRT-RED", "SHIRT-100")]
         cogs_map = {"TOTALLY-DIFFERENT-SKU": Decimal("50000")}
         summaries = calculate_sku_summaries(rows, cogs_map)
@@ -164,23 +173,28 @@ class TestCOGSParentCascade:
         assert summaries[0].margin is None
 
     def test_raworderrow_has_parent_sku_id_field(self):
-        from app.services.parser.base import RawOrderRow
         import dataclasses
+
+        from app.services.parser.base import RawOrderRow
+
         field_names = {f.name for f in dataclasses.fields(RawOrderRow)}
         assert "parent_sku_id" in field_names
 
     def test_shopee_aliases_has_parent_sku_id(self):
         from app.services.parser.normalizer import SHOPEE_COLUMN_ALIASES
+
         assert "parent_sku_id" in SHOPEE_COLUMN_ALIASES
         assert "Parent SKU Reference No." in SHOPEE_COLUMN_ALIASES["parent_sku_id"]
 
 
 # ── Issue 4: Benchmark versioning ────────────────────────────────────────────
 
+
 class TestBenchmarkVersioning:
     def test_benchmark_comparison_has_version_fields(self):
+
         from app.services.benchmarks.industry_data import BenchmarkComparison
-        import dataclasses
+
         # BenchmarkComparison is a Pydantic model — check model_fields
         fields = set(BenchmarkComparison.model_fields.keys())
         assert "benchmark_version" in fields, "Missing benchmark_version field"
@@ -188,8 +202,11 @@ class TestBenchmarkVersioning:
 
     def test_compare_to_industry_returns_version_in_results(self):
         from app.services.benchmarks.industry_data import (
-            compare_to_industry, BENCHMARK_VERSION, LAST_UPDATED,
+            BENCHMARK_VERSION,
+            LAST_UPDATED,
+            compare_to_industry,
         )
+
         results = compare_to_industry(
             shop_refund_rate=Decimal("0.12"),
             shop_margin_pct=Decimal("0.25"),
@@ -202,18 +219,22 @@ class TestBenchmarkVersioning:
             assert r.last_updated == LAST_UPDATED
 
     def test_benchmark_version_and_last_updated_constants_exist(self):
-        from app.services.benchmarks.industry_data import BENCHMARK_VERSION, LAST_UPDATED
         from datetime import date as date_type
+
+        from app.services.benchmarks.industry_data import BENCHMARK_VERSION, LAST_UPDATED
+
         assert isinstance(BENCHMARK_VERSION, str) and BENCHMARK_VERSION
         assert isinstance(LAST_UPDATED, date_type)
 
 
 # ── Issue 6: Tier-aware AI budget ────────────────────────────────────────────
 
+
 class TestTierAwareBudget:
     def test_ai_budget_for_tier_returns_different_limits(self):
+
         from app.core.config import Settings
-        import os
+
         # Minimal env override to avoid DB/Redis validation
         s = Settings(
             database_url="postgresql+asyncpg://x:x@localhost/x",
@@ -233,6 +254,7 @@ class TestTierAwareBudget:
 
     def test_ai_budget_for_unknown_tier_falls_back_to_free(self):
         from app.core.config import Settings
+
         s = Settings(
             database_url="postgresql+asyncpg://x:x@localhost/x",
             supabase_url="https://x.supabase.co",
@@ -245,34 +267,50 @@ class TestTierAwareBudget:
 
     def test_call_ai_signature_has_tier_param(self):
         import inspect
+
         from app.services.ai.client import call_ai
+
         params = inspect.signature(call_ai).parameters
         assert "tier" in params, "call_ai() missing tier parameter"
         assert params["tier"].default == "free"
 
     def test_ai_functions_have_tier_param(self):
         import inspect
+
         from app.services.ai.functions import (
-            run_import_rescue, run_aha_narrator, run_action_coach,
-            run_refund_clusterer, run_weekly_receipt,
+            run_action_coach,
+            run_aha_narrator,
+            run_import_rescue,
+            run_refund_clusterer,
+            run_weekly_receipt,
         )
-        for fn in [run_import_rescue, run_aha_narrator, run_action_coach,
-                   run_refund_clusterer, run_weekly_receipt]:
+
+        for fn in [
+            run_import_rescue,
+            run_aha_narrator,
+            run_action_coach,
+            run_refund_clusterer,
+            run_weekly_receipt,
+        ]:
             params = inspect.signature(fn).parameters
             assert "tier" in params, f"{fn.__name__}() missing tier parameter"
 
 
 # ── Issue 8: Migration lock + ARQ dedup ──────────────────────────────────────
 
+
 class TestMigrationAndEnqueueFixes:
     def test_migration_env_has_advisory_lock(self):
         import pathlib
+
         source = pathlib.Path("migrations/env.py").read_text()
         assert "pg_advisory_lock" in source, "migrations/env.py must use pg_advisory_lock"
         assert "pg_advisory_unlock" in source, "migrations/env.py must release advisory lock"
 
     def test_migration_lock_id_is_defined(self):
-        import pathlib, re
+        import pathlib
+        import re
+
         source = pathlib.Path("migrations/env.py").read_text()
         match = re.search(r"_MIGRATION_LOCK_ID\s*=\s*(\d+)", source)
         assert match, "_MIGRATION_LOCK_ID constant not found in migrations/env.py"
@@ -280,7 +318,9 @@ class TestMigrationAndEnqueueFixes:
 
     def test_import_endpoint_uses_job_id_for_dedup(self):
         import inspect
+
         from app.api.v1 import imports as imports_module
+
         source = inspect.getsource(imports_module)
         assert "_job_id" in source, (
             "imports.py must pass _job_id to enqueue_job for ARQ-level dedup"

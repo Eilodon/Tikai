@@ -3,6 +3,7 @@ Transaction Export Parser.
 Handles TikTok Shop Transaction Export format.
 Used to cross-verify settlement amounts.
 """
+
 import io
 from datetime import date
 from decimal import Decimal
@@ -17,12 +18,12 @@ log = structlog.get_logger()
 
 
 TRANSACTION_COLUMN_ALIASES: dict[str, list[str]] = {
-    "transaction_id":     ["Transaction ID", "Mã giao dịch"],
-    "transaction_type":   ["Transaction Type", "Loại giao dịch"],
-    "order_id":           ["Order ID", "Mã đơn hàng"],
-    "settlement_amount":  ["Settlement Amount", "Số tiền quyết toán"],
-    "transaction_date":   ["Transaction Date", "Ngày giao dịch"],
-    "status":             ["Status", "Trạng thái"],
+    "transaction_id": ["Transaction ID", "Mã giao dịch"],
+    "transaction_type": ["Transaction Type", "Loại giao dịch"],
+    "order_id": ["Order ID", "Mã đơn hàng"],
+    "settlement_amount": ["Settlement Amount", "Số tiền quyết toán"],
+    "transaction_date": ["Transaction Date", "Ngày giao dịch"],
+    "status": ["Status", "Trạng thái"],
 }
 
 
@@ -56,8 +57,9 @@ def parse_transaction_csv(file_bytes: bytes, filename: str) -> list[TransactionR
         if filename.lower().endswith((".xlsx", ".xls")):
             df = pd.read_excel(io.BytesIO(file_bytes), dtype=str)
         else:
-            df = pd.read_csv(io.BytesIO(file_bytes), encoding=encoding,
-                             dtype=str, keep_default_na=False)
+            df = pd.read_csv(
+                io.BytesIO(file_bytes), encoding=encoding, dtype=str, keep_default_na=False
+            )
     except Exception as e:
         log.error("transaction_parser.read_failed", error=str(e))
         return []
@@ -75,6 +77,7 @@ def parse_transaction_csv(file_bytes: bytes, filename: str) -> list[TransactionR
 
     rows: list[TransactionRow] = []
     for _, raw in df.iterrows():
+
         def get(key: str) -> str:
             col = col_map.get(key)
             return str(raw.get(col, "")).strip() if col else ""
@@ -83,14 +86,16 @@ def parse_transaction_csv(file_bytes: bytes, filename: str) -> list[TransactionR
         if not txn_id:
             continue
 
-        rows.append(TransactionRow(
-            transaction_id=txn_id,
-            transaction_type=get("transaction_type"),
-            order_id=get("order_id") or None,
-            settlement_amount=parse_money(get("settlement_amount")),
-            transaction_date=parse_date(get("transaction_date")),
-            status=get("status"),
-        ))
+        rows.append(
+            TransactionRow(
+                transaction_id=txn_id,
+                transaction_type=get("transaction_type"),
+                order_id=get("order_id") or None,
+                settlement_amount=parse_money(get("settlement_amount")),
+                transaction_date=parse_date(get("transaction_date")),
+                status=get("status"),
+            )
+        )
 
     log.info("transaction_parser.complete", rows=len(rows))
     return rows

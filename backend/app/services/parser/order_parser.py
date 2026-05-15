@@ -5,6 +5,7 @@ v2.0.0: Platform-aware parsing. Shopee exports use SHOPEE_COLUMN_ALIASES.
 INVARIANT: parse_order_csv() never raises for bad individual rows — they go to failed_rows.
 Raises UnsupportedFileTypeError only when the file cannot be read at all.
 """
+
 import io
 
 import chardet
@@ -74,9 +75,7 @@ def parse_order_csv(file_bytes: bytes, original_filename: str) -> ParseResult:
     can_continue_mode = _determine_mode(col_map)
 
     # 7. Prepare masked sample rows for AI rescue
-    sample_rows_masked = [
-        mask_pii(row) for row in df.head(5).to_dict(orient="records")
-    ]
+    sample_rows_masked = [mask_pii(row) for row in df.head(5).to_dict(orient="records")]
 
     # 8. Parse rows
     rows: list[RawOrderRow] = []
@@ -99,7 +98,7 @@ def parse_order_csv(file_bytes: bytes, original_filename: str) -> ParseResult:
 
     return ParseResult(
         file_type=file_type,
-        platform=platform,          # v2.0.0
+        platform=platform,  # v2.0.0
         rows=rows,
         failed_rows=failed_rows,
         missing_columns=missing,
@@ -130,6 +129,7 @@ def _parse_quantity(raw: str) -> int:
         return 1
     try:
         from decimal import Decimal, InvalidOperation
+
         return max(1, int(Decimal(raw.split(".")[0] if "." in raw else raw)))
     except (ValueError, TypeError, InvalidOperation):
         return 1
@@ -138,6 +138,7 @@ def _parse_quantity(raw: str) -> int:
 def _require_date(parsed_date, raw_value: str, column_exists: bool):
     """FIX BUG-NH3 (v2): raise if date column exists but empty or unparseable."""
     from datetime import date
+
     if parsed_date is not None:
         return parsed_date
     if column_exists:
@@ -145,13 +146,12 @@ def _require_date(parsed_date, raw_value: str, column_exists: bool):
     return date.today()  # column absent — legacy export format
 
 
-def _parse_single_row(
-    row: dict, col_map: dict[str, str]
-) -> RawOrderRow | None:
+def _parse_single_row(row: dict, col_map: dict[str, str]) -> RawOrderRow | None:
     """Parse one CSV/Excel row → RawOrderRow.
     Returns None for empty rows (silently skipped).
     Raises Exception for bad rows → goes to failed_rows.
     """
+
     def get(canonical: str, default: str = "") -> str:
         actual_col = col_map.get(canonical)
         if actual_col is None:

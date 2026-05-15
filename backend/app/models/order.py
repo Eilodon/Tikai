@@ -15,9 +15,7 @@ class Order(Base, TimestampMixin):
     __tablename__ = "orders"
 
     # INVARIANT: tất cả money fields dùng Numeric(20, 4) — KHÔNG BAOGIỜ Float
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     shop_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False
     )
@@ -62,9 +60,7 @@ class Order(Base, TimestampMixin):
     )
     # FIX P0-3: quantity — số lượng sản phẩm/đơn (default 1 nếu export không có cột này)
     # CRITICAL: COGS = cogs_per_unit * quantity, NOT cogs_per_unit * order_count
-    quantity: Mapped[int] = mapped_column(
-        Integer, default=1, nullable=False, server_default="1"
-    )
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
     # cogs: nullable — seller nhập thủ công, có thể chưa có
     cogs: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
 

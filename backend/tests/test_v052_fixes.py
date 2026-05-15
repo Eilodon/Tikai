@@ -1,5 +1,4 @@
 """Tests for v0.5.2 bug fixes from code review audit."""
-from decimal import Decimal
 
 
 class TestWorkerEstimatedSavedFix:
@@ -12,7 +11,9 @@ class TestWorkerEstimatedSavedFix:
 
     def test_worker_passes_total_estimated_to_db_save(self):
         import inspect
+
         from app.tasks import worker
+
         source = inspect.getsource(worker.run_weekly_receipts)
         # Locate the WeeklyReceipt(...) constructor call and confirm
         # total_estimated_saved=total_estimated appears AFTER the AI input dict
@@ -91,12 +92,15 @@ class TestSharedArqPool:
 
     def test_arq_pool_module_exists(self):
         from app.core import arq_pool
+
         assert hasattr(arq_pool, "get_arq_pool")
         assert hasattr(arq_pool, "close_arq_pool")
 
     def test_imports_uses_shared_pool(self):
         import inspect
+
         from app.api.v1 import imports
+
         source = inspect.getsource(imports)
         assert "from app.core.arq_pool import get_arq_pool" in source
         assert "get_arq_pool()" in source
@@ -104,7 +108,9 @@ class TestSharedArqPool:
     def test_actions_uses_shared_pool(self):
         """Critical: actions.py was creating new connection per request before v0.5.2."""
         import inspect
+
         from app.api.v1 import actions
+
         source = inspect.getsource(actions)
         assert "from app.core.arq_pool import get_arq_pool" in source
         # No more inline ArqRedis.from_url
@@ -116,7 +122,9 @@ class TestSharedArqPool:
     def test_arq_pool_uses_lock(self):
         """Race condition prevention check."""
         import inspect
+
         from app.core import arq_pool
+
         source = inspect.getsource(arq_pool.get_arq_pool)
         assert "_arq_lock" in source, "Missing asyncio.Lock for race protection"
         assert "ping" in source, "Missing health check before pool reuse"
@@ -127,13 +135,15 @@ class TestRecomputeRateLimit:
 
     def test_recompute_endpoint_has_rate_limit_decorator(self):
         import inspect
+
         from app.api.v1 import insights
+
         source = inspect.getsource(insights)
         # Rate limit decorator must appear before recompute_insight definition
         recompute_idx = source.find("async def recompute_insight")
         assert recompute_idx > 0, "recompute_insight not found"
         # Look 200 chars before for the decorator
-        preceding = source[max(0, recompute_idx - 200):recompute_idx]
+        preceding = source[max(0, recompute_idx - 200) : recompute_idx]
         assert "@limiter.limit(" in preceding, (
             "recompute_insight is missing @limiter.limit() — heavy endpoint must be rate-limited"
         )

@@ -2,6 +2,7 @@
 Weekly Receipts API.
 v1.0.0: list_receipts limit capped at 52 (1 year) — was unbounded (user could pass limit=10000).
 """
+
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -53,8 +54,12 @@ async def get_latest_receipt(
     if not receipt:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"code": "NOT_FOUND",
-                               "message": "Chưa có weekly receipt. Sẽ có sau tuần đầu tiên sử dụng."}}
+            detail={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": "Chưa có weekly receipt. Sẽ có sau tuần đầu tiên sử dụng.",
+                }
+            },
         )
     return WeeklyReceiptResponse.model_validate(receipt)
 
@@ -90,7 +95,9 @@ async def mark_receipt_read(
         )
     )
     if not receipt:
-        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy."}})
+        raise HTTPException(
+            status_code=404, detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy."}}
+        )
 
     receipt.is_read = True
     await db.flush()

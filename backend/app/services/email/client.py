@@ -22,6 +22,7 @@ FIXES (v2.0.1):
 - FIX: CTA link uses settings.app_base_url (not hardcoded "https://app.tikai.vn")
   so staging/preview environments don't email-link to production
 """
+
 import asyncio
 import html as html_lib
 
@@ -206,7 +207,7 @@ async def send_weekly_digest(
         estimated_section=_escape(estimated_section),
         next_week_focus=_escape(next_week_focus),
         disclaimer=_escape(disclaimer),
-        app_base_url=settings.app_base_url,   # FIX v2.0.1: not hardcoded
+        app_base_url=settings.app_base_url,  # FIX v2.0.1: not hardcoded
     )
 
     try:
@@ -236,8 +237,7 @@ async def send_weekly_digest(
         )
         return success
     except ImportError:
-        log.error("email.sendgrid_not_installed",
-                  hint="pip install sendgrid>=6.11.0")
+        log.error("email.sendgrid_not_installed", hint="pip install sendgrid>=6.11.0")
         return False
     except Exception as e:
         log.error("email.exception", to=to_email, error=str(e)[:200])

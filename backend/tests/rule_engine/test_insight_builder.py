@@ -2,7 +2,7 @@
 Integration test — full Rule Engine pipeline.
 Run: pytest tests/rule_engine/test_insight_builder.py -v
 """
-import pytest
+
 from decimal import Decimal
 
 from app.services.rule_engine.insight_builder import build_insight
@@ -69,6 +69,7 @@ class TestBuildInsight:
 
     def test_period_dates_from_orders(self, sample_rows, sample_fee_config):
         from datetime import date
+
         insight = build_insight(
             rows=sample_rows,
             fee_configs=sample_fee_config,

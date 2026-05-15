@@ -8,6 +8,7 @@ This fixes a circular import: routers like insights.py needed @limiter.limit()
 but importing from app.main caused chicken-and-egg (main.py imports routers,
 routers import main.py).
 """
+
 from slowapi import Limiter
 from starlette.requests import Request
 

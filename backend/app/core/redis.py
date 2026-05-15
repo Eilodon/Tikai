@@ -53,6 +53,7 @@ async def cache_get_safe(key: str) -> Any | None:
         return await cache_get(key)
     except Exception as e:
         import structlog
+
         structlog.get_logger().warning("redis.cache_get_failed_open", key=key, error=str(e))
         return None
 
@@ -63,6 +64,7 @@ async def cache_set_safe(key: str, value: Any, ttl_seconds: int) -> None:
         await cache_set(key, value, ttl_seconds)
     except Exception as e:
         import structlog
+
         structlog.get_logger().warning("redis.cache_set_failed_open", key=key, error=str(e))
 
 

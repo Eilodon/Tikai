@@ -4,6 +4,7 @@ FIX ISSUE-02:
 - Uses supabase_service_role_key for server-side operations
 - Persistent httpx.AsyncClient with connection pooling
 """
+
 import uuid
 
 import httpx

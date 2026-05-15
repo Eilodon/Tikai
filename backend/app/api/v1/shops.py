@@ -1,7 +1,8 @@
+from datetime import UTC
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,12 +25,17 @@ async def create_shop(
     from sqlalchemy import func
 
     # Count existing active shops for this user
-    shop_count: int = await db.scalar(
-        select(func.count()).select_from(Shop).where(
-            Shop.owner_id == current_user.id,
-            Shop.is_active == True,  # noqa: E712
+    shop_count: int = (
+        await db.scalar(
+            select(func.count())
+            .select_from(Shop)
+            .where(
+                Shop.owner_id == current_user.id,
+                Shop.is_active == True,  # noqa: E712
+            )
         )
-    ) or 0
+        or 0
+    )
 
     if shop_count > 0:
         # Get any existing shop to check the tier limit
@@ -46,20 +52,23 @@ async def create_shop(
                     detail_msg = f"Đã đạt giới hạn {max_shops} shops của gói hiện tại."
                 raise HTTPException(
                     status_code=402,
-                    detail={"error": {
-                        "code": "SHOP_LIMIT_REACHED",
-                        "message": detail_msg,
-                        "upgrade_url": "/settings/billing",
-                    }}
+                    detail={
+                        "error": {
+                            "code": "SHOP_LIMIT_REACHED",
+                            "message": detail_msg,
+                            "upgrade_url": "/settings/billing",
+                        }
+                    },
                 )
 
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
     shop = Shop(
         owner_id=current_user.id,
         shop_name=body.shop_name,
         tiktok_shop_id=body.tiktok_shop_id,
         subscription_tier="pro_trial",
-        trial_expires_at=datetime.now(timezone.utc) + timedelta(days=14),
+        trial_expires_at=datetime.now(UTC) + timedelta(days=14),
     )
     db.add(shop)
     await db.flush()
@@ -78,7 +87,12 @@ async def get_shop_me(
     if not shop:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": {"code": "SHOP_NOT_FOUND", "message": "Chưa có shop. Vui lòng hoàn thành thiết lập."}}
+            detail={
+                "error": {
+                    "code": "SHOP_NOT_FOUND",
+                    "message": "Chưa có shop. Vui lòng hoàn thành thiết lập.",
+                }
+            },
         )
     return ShopResponse.model_validate(shop)
 
@@ -93,7 +107,10 @@ async def update_shop_me(
         select(Shop).where(Shop.owner_id == current_user.id, Shop.is_active == True)  # noqa: E712
     )
     if not shop:
-        raise HTTPException(status_code=404, detail={"error": {"code": "SHOP_NOT_FOUND", "message": "Shop không tồn tại."}})
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "SHOP_NOT_FOUND", "message": "Shop không tồn tại."}},
+        )
 
     if body.shop_name is not None:
         shop.shop_name = body.shop_name
@@ -124,6 +141,7 @@ async def update_notification_settings(
         if body.notification_email:
             # F-05: use email-validator dep (was only checking "@")
             from email_validator import EmailNotValidError, validate_email
+
             try:
                 validate_email(body.notification_email, check_deliverability=False)
             except EmailNotValidError:
@@ -138,8 +156,21 @@ async def update_notification_settings(
     return ShopResponse.model_validate(shop)
 
 
+class _PushSubscriptionKeys(BaseModel):
+    auth: str = Field(max_length=256)
+    p256dh: str = Field(max_length=512)
+
+
+class _PushSubscriptionPayload(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    endpoint: str = Field(max_length=500)
+    expiration_time: int | None = Field(None, alias="expirationTime")
+    keys: _PushSubscriptionKeys
+
+
 class PushSubscriptionRequest(BaseModel):
-    subscription: dict  # Web Push PushSubscription JSON from browser
+    subscription: _PushSubscriptionPayload
 
 
 @router.post("/shops/me/push-subscription", status_code=204)
@@ -149,6 +180,5 @@ async def save_push_subscription(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Save browser Web Push subscription for this shop."""
-    shop.push_subscription_json = body.subscription
+    shop.push_subscription_json = body.subscription.model_dump()
     await db.flush()
-

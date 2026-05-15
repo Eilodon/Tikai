@@ -5,15 +5,14 @@ Uses real Shopee VN export column names (verified against Shopee Seller Center V
 INVARIANT: Shopee exports must parse to the same RawOrderRow schema as TikTok exports.
 The Rule Engine is platform-agnostic — it operates on RawOrderRow regardless of source.
 """
+
 import io
-import pytest
 from decimal import Decimal
 
 import pandas as pd
 
-from app.services.parser.order_parser import parse_order_csv
 from app.services.parser.detector import detect_file_type
-
+from app.services.parser.order_parser import parse_order_csv
 
 # ── Sample Shopee export data ─────────────────────────────────────────────────
 
@@ -49,8 +48,12 @@ SHOPEE_SAMPLE_VI_ROWS = [
 ]
 
 TIKTOK_HEADERS = [
-    "Order ID", "Product Name", "SKU ID",
-    "Original Price", "Order Status", "Order Creation Time",
+    "Order ID",
+    "Product Name",
+    "SKU ID",
+    "Original Price",
+    "Order Status",
+    "Order Creation Time",
     "Platform Commission Fee",
 ]
 
@@ -63,6 +66,7 @@ def _make_shopee_csv(rows: list[dict]) -> bytes:
 
 
 # ── Detector tests ────────────────────────────────────────────────────────────
+
 
 class TestShopeeDetector:
     def test_detects_shopee_en_file_type(self):
@@ -98,6 +102,7 @@ class TestShopeeDetector:
 
 
 # ── Parser tests ──────────────────────────────────────────────────────────────
+
 
 class TestShopeeParser:
     def test_parse_shopee_csv_returns_rows(self):

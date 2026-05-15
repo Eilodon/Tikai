@@ -5,6 +5,7 @@ INVARIANT: mọi AI call đi qua đây — không gọi anthropic.AsyncAnthropic
 v1.0.0: Added exponential backoff between retries (was immediate retry — useless
 for 429 rate-limit or 529 overload errors from Anthropic API).
 """
+
 import asyncio
 import json
 import re
@@ -22,10 +23,10 @@ log = structlog.get_logger()
 
 # ── Model selection — FROZEN until ADR authorizes change ──────────────────────
 MODEL_STANDARD = "claude-sonnet-4-5-20251001"
-MODEL_SMALL    = "claude-haiku-4-5-20251001"
+MODEL_SMALL = "claude-haiku-4-5-20251001"
 
 # Approximate cost per 1M tokens (USD)
-COST_PER_1M_INPUT  = {MODEL_STANDARD: Decimal("3.00"),  MODEL_SMALL: Decimal("0.25")}
+COST_PER_1M_INPUT = {MODEL_STANDARD: Decimal("3.00"), MODEL_SMALL: Decimal("0.25")}
 COST_PER_1M_OUTPUT = {MODEL_STANDARD: Decimal("15.00"), MODEL_SMALL: Decimal("1.25")}
 
 SYSTEM_BASE = """Bạn là Tikai, trợ lý vận hành TikTok Shop cho seller Việt Nam.
@@ -56,11 +57,13 @@ redis.call('EXPIRE', key, ttl)
 return redis.call('HGET', key, 'total_usd')
 """
 
+
 def get_anthropic_client() -> anthropic.AsyncAnthropic:
     """Singleton Anthropic client — created once, reused across all calls."""
     global _anthropic_client
     if _anthropic_client is None:
         import httpx
+
         _anthropic_client = anthropic.AsyncAnthropic(
             api_key=settings.anthropic_api_key,
             timeout=httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0),
@@ -112,8 +115,10 @@ OUTPUT SCHEMA (return ONLY valid JSON matching this schema, no other text):
             backoff_seconds = 2.0 * attempt  # 2s before attempt 2
             log.info(
                 "ai.retry_backoff",
-                shop_id=shop_id, function_name=function_name,
-                attempt=attempt + 1, backoff_seconds=backoff_seconds,
+                shop_id=shop_id,
+                function_name=function_name,
+                attempt=attempt + 1,
+                backoff_seconds=backoff_seconds,
             )
             await asyncio.sleep(backoff_seconds)
 
@@ -133,18 +138,22 @@ OUTPUT SCHEMA (return ONLY valid JSON matching this schema, no other text):
             parsed = json.loads(raw_text)
             validated = output_schema.model_validate(parsed)
 
-            input_tokens  = response.usage.input_tokens
+            input_tokens = response.usage.input_tokens
             output_tokens = response.usage.output_tokens
             cost = (
-                Decimal(input_tokens)  / Decimal("1000000") * COST_PER_1M_INPUT[model]
+                Decimal(input_tokens) / Decimal("1000000") * COST_PER_1M_INPUT[model]
                 + Decimal(output_tokens) / Decimal("1000000") * COST_PER_1M_OUTPUT[model]
             )
 
             log.info(
                 "ai.call_complete",
-                shop_id=shop_id, function_name=function_name,
-                model=model, input_tokens=input_tokens, output_tokens=output_tokens,
-                cost_usd=str(cost), attempt=attempt + 1,
+                shop_id=shop_id,
+                function_name=function_name,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=str(cost),
+                attempt=attempt + 1,
             )
 
             await _record_cost(shop_id, function_name, cost)
@@ -154,8 +163,10 @@ OUTPUT SCHEMA (return ONLY valid JSON matching this schema, no other text):
             last_error = e
             log.warning(
                 "ai.call_failed",
-                shop_id=shop_id, function_name=function_name,
-                attempt=attempt + 1, error=str(e),
+                shop_id=shop_id,
+                function_name=function_name,
+                attempt=attempt + 1,
+                error=str(e),
             )
 
     raise ValueError(f"AI call failed after 2 attempts for {function_name}: {last_error}")
@@ -167,6 +178,7 @@ async def _check_budget(shop_id: str, tier: str = "free") -> None:
     Fail-open: if Redis is unavailable, allow the call (cost tracked post-call)."""
     try:
         from app.core.redis import get_redis
+
         key = f"ai_cost_monthly_v2:{shop_id}"
         r = await get_redis()
         raw = await r.hget(key, "total_usd")
@@ -176,8 +188,10 @@ async def _check_budget(shop_id: str, tier: str = "free") -> None:
             if spent >= budget:
                 log.warning(
                     "ai.budget_exceeded",
-                    shop_id=shop_id, tier=tier,
-                    spent=str(spent), limit=str(budget),
+                    shop_id=shop_id,
+                    tier=tier,
+                    spent=str(spent),
+                    limit=str(budget),
                 )
                 raise ValueError(f"AI budget exceeded for shop {shop_id} (tier={tier})")
     except ValueError:
@@ -193,6 +207,7 @@ async def _record_cost(shop_id: str, function_name: str, cost_usd: Decimal) -> N
     from datetime import datetime
 
     from app.core.redis import get_redis
+
     now = datetime.now(UTC)
     days_in_month = calendar.monthrange(now.year, now.month)[1]
     ttl = (days_in_month - now.day + 1) * 86400
@@ -201,7 +216,9 @@ async def _record_cost(shop_id: str, function_name: str, cost_usd: Decimal) -> N
     try:
         r = await get_redis()
         new_total_raw = await r.eval(
-            _RECORD_COST_LUA, 1, key,
+            _RECORD_COST_LUA,
+            1,
+            key,
             str(float(cost_usd)),
             f"calls:{function_name}",
             str(ttl),
@@ -217,5 +234,10 @@ async def _record_cost(shop_id: str, function_name: str, cost_usd: Decimal) -> N
             )
     except Exception as e:
         # Fail-open: cost recording failure must never crash the import pipeline.
-        log.error("ai.cost_record_failed", shop_id=shop_id, function_name=function_name,
-                  cost_usd=str(cost_usd), error=str(e))
+        log.error(
+            "ai.cost_record_failed",
+            shop_id=shop_id,
+            function_name=function_name,
+            cost_usd=str(cost_usd),
+            error=str(e),
+        )

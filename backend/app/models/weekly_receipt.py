@@ -16,6 +16,7 @@ class WeeklyReceipt(Base, TimestampMixin):
     AI-generated weekly money saved receipt.
     INVARIANT: confirmed_saved from Rule Engine only — never AI-calculated.
     """
+
     __tablename__ = "weekly_receipts"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -41,9 +42,7 @@ class WeeklyReceipt(Base, TimestampMixin):
 
     # v1.2.0 — Email delivery tracking
     email_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    email_sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     shop: Mapped[Shop] = relationship(back_populates="weekly_receipts")  # noqa: F821
 

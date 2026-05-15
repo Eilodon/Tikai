@@ -34,12 +34,24 @@ class LiveStreamSession(Base):
     attributed_orders: Mapped[int] = mapped_column(Integer, default=0)
     attributed_net_revenue: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
     @property
     def total_cost(self) -> Decimal:
-        return self.host_cost + self.studio_cost + self.product_sample_cost + self.ads_cost + self.other_cost
+        return (
+            self.host_cost
+            + self.studio_cost
+            + self.product_sample_cost
+            + self.ads_cost
+            + self.other_cost
+        )
 
     @property
     def live_roi(self) -> Decimal | None:

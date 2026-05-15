@@ -4,6 +4,7 @@ FIX BUG-08: verify_action_impact is now actually enqueued after complete.
 LOW-3: rate limiting — 60 action updates/minute per IP.
 v0.5.2: ARQ pool extracted to core/arq_pool.py — no more per-request connection.
 """
+
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
@@ -27,7 +28,9 @@ router = APIRouter()
 async def list_actions(
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    status_filter: Literal["pending", "done", "dismissed", "all"] = "pending",  # F-3-03: enum validation
+    status_filter: Literal[
+        "pending", "done", "dismissed", "all"
+    ] = "pending",  # F-3-03: enum validation
 ) -> AIActionListResponse:
     query = select(AIAction).where(AIAction.shop_id == shop.id)
     if status_filter != "all":
@@ -66,6 +69,7 @@ async def complete_action(
     except Exception as e:
         # Non-fatal: log but don't fail the complete action request
         import structlog
+
         structlog.get_logger().warning(
             "actions.enqueue_verify_failed", action_id=str(action_id), error=str(e)
         )
@@ -88,9 +92,7 @@ async def dismiss_action(
     return AIActionResponse.model_validate(action)
 
 
-async def _get_action(
-    action_id: uuid.UUID, shop_id: uuid.UUID, db: AsyncSession
-) -> AIAction:
+async def _get_action(action_id: uuid.UUID, shop_id: uuid.UUID, db: AsyncSession) -> AIAction:
     action = await db.scalar(
         select(AIAction).where(
             AIAction.id == action_id,
@@ -100,6 +102,6 @@ async def _get_action(
     if not action:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"code": "NOT_FOUND", "message": "Action không tồn tại."}}
+            detail={"error": {"code": "NOT_FOUND", "message": "Action không tồn tại."}},
         )
     return action

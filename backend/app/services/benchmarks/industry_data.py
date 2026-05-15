@@ -8,6 +8,7 @@ Giai đoạn 2 (khi ≥100 shops): aggregated anonymous benchmark từ Tikai dat
 INVARIANT: mỗi BenchmarkComparison phải có source field — không show benchmark
            mà không có nguồn, tránh seller hiểu nhầm đây là số Tikai tự tính.
 """
+
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -24,35 +25,35 @@ LAST_UPDATED = date(2025, 1, 1)
 
 # Median refund rates by category (TikTok Shop VN)
 REFUND_RATE_BENCHMARKS: dict[Category, Decimal] = {
-    "fashion":     Decimal("0.15"),  # 15% — cao do size/màu issues
-    "beauty":      Decimal("0.08"),
-    "food":        Decimal("0.05"),
+    "fashion": Decimal("0.15"),  # 15% — cao do size/màu issues
+    "beauty": Decimal("0.08"),
+    "food": Decimal("0.05"),
     "electronics": Decimal("0.06"),
-    "home":        Decimal("0.10"),
-    "baby":        Decimal("0.07"),
-    "other":       Decimal("0.09"),
+    "home": Decimal("0.10"),
+    "baby": Decimal("0.07"),
+    "other": Decimal("0.09"),
 }
 
 # Gross margin benchmarks (sau platform fees, trước COGS)
 MARGIN_BENCHMARKS: dict[Category, Decimal] = {
-    "fashion":     Decimal("0.25"),
-    "beauty":      Decimal("0.35"),
-    "food":        Decimal("0.15"),
+    "fashion": Decimal("0.25"),
+    "beauty": Decimal("0.35"),
+    "food": Decimal("0.15"),
     "electronics": Decimal("0.12"),
-    "home":        Decimal("0.20"),
-    "baby":        Decimal("0.22"),
-    "other":       Decimal("0.20"),
+    "home": Decimal("0.20"),
+    "baby": Decimal("0.22"),
+    "other": Decimal("0.20"),
 }
 
 # Total platform fee burden as % of GMV (all fees combined)
 AVG_FEE_BURDEN: dict[Category, Decimal] = {
-    "fashion":     Decimal("0.22"),
-    "beauty":      Decimal("0.20"),
-    "food":        Decimal("0.12"),
+    "fashion": Decimal("0.22"),
+    "beauty": Decimal("0.20"),
+    "food": Decimal("0.12"),
     "electronics": Decimal("0.15"),
-    "home":        Decimal("0.18"),
-    "baby":        Decimal("0.16"),
-    "other":       Decimal("0.18"),
+    "home": Decimal("0.18"),
+    "baby": Decimal("0.16"),
+    "other": Decimal("0.18"),
 }
 
 
@@ -61,13 +62,13 @@ class BenchmarkComparison(BaseModel):
     metric_label: str  # Vietnamese label
     shop_value: Decimal
     industry_value: Decimal
-    deviation_pct: Decimal          # (shop - industry) / industry
+    deviation_pct: Decimal  # (shop - industry) / industry
     verdict: Literal["better", "on_par", "worse"]
-    label: str                       # human-readable verdict string
+    label: str  # human-readable verdict string
     category: Category
     source: str
-    benchmark_version: str          # e.g. "2025-Q1" — lets client show data age
-    last_updated: date              # date the benchmark data was last refreshed
+    benchmark_version: str  # e.g. "2025-Q1" — lets client show data age
+    last_updated: date  # date the benchmark data was last refreshed
 
 
 def compare_to_industry(
@@ -89,7 +90,9 @@ def compare_to_industry(
 
     if deviation < Decimal("-0.10"):
         verdict = "better"
-        label = f"Tỷ lệ hoàn {shop_refund_rate:.0%} — tốt hơn ngành {category} ({benchmark_refund:.0%})"
+        label = (
+            f"Tỷ lệ hoàn {shop_refund_rate:.0%} — tốt hơn ngành {category} ({benchmark_refund:.0%})"
+        )
     elif deviation > Decimal("0.30"):
         verdict = "worse"
         label = (
@@ -100,19 +103,21 @@ def compare_to_industry(
         verdict = "on_par"
         label = f"Tỷ lệ hoàn {shop_refund_rate:.0%} — tương đương ngành ({benchmark_refund:.0%})"
 
-    results.append(BenchmarkComparison(
-        metric="refund_rate",
-        metric_label="Tỷ lệ hoàn hàng",
-        shop_value=shop_refund_rate,
-        industry_value=benchmark_refund,
-        deviation_pct=deviation,
-        verdict=verdict,
-        label=label,
-        category=category,
-        source=SOURCE,
-        benchmark_version=BENCHMARK_VERSION,
-        last_updated=LAST_UPDATED,
-    ))
+    results.append(
+        BenchmarkComparison(
+            metric="refund_rate",
+            metric_label="Tỷ lệ hoàn hàng",
+            shop_value=shop_refund_rate,
+            industry_value=benchmark_refund,
+            deviation_pct=deviation,
+            verdict=verdict,
+            label=label,
+            category=category,
+            source=SOURCE,
+            benchmark_version=BENCHMARK_VERSION,
+            last_updated=LAST_UPDATED,
+        )
+    )
 
     # ── Margin ───────────────────────────────────────────────────────────────
     if shop_margin_pct is not None:
@@ -121,9 +126,7 @@ def compare_to_industry(
 
         if margin_deviation > Decimal("0.10"):
             margin_verdict = "better"
-            margin_label = (
-                f"Margin {shop_margin_pct:.0%} — tốt hơn ngành {benchmark_margin:.0%}"
-            )
+            margin_label = f"Margin {shop_margin_pct:.0%} — tốt hơn ngành {benchmark_margin:.0%}"
         elif margin_deviation < Decimal("-0.20"):
             margin_verdict = "worse"
             margin_label = (
@@ -132,21 +135,25 @@ def compare_to_industry(
             )
         else:
             margin_verdict = "on_par"
-            margin_label = f"Margin {shop_margin_pct:.0%} — tương đương ngành ({benchmark_margin:.0%})"
+            margin_label = (
+                f"Margin {shop_margin_pct:.0%} — tương đương ngành ({benchmark_margin:.0%})"
+            )
 
-        results.append(BenchmarkComparison(
-            metric="margin_pct",
-            metric_label="Margin gộp",
-            shop_value=shop_margin_pct,
-            industry_value=benchmark_margin,
-            deviation_pct=margin_deviation,
-            verdict=margin_verdict,
-            label=margin_label,
-            category=category,
-            source=SOURCE,
-            benchmark_version=BENCHMARK_VERSION,
-            last_updated=LAST_UPDATED,
-        ))
+        results.append(
+            BenchmarkComparison(
+                metric="margin_pct",
+                metric_label="Margin gộp",
+                shop_value=shop_margin_pct,
+                industry_value=benchmark_margin,
+                deviation_pct=margin_deviation,
+                verdict=margin_verdict,
+                label=margin_label,
+                category=category,
+                source=SOURCE,
+                benchmark_version=BENCHMARK_VERSION,
+                last_updated=LAST_UPDATED,
+            )
+        )
 
     # ── Fee Burden ───────────────────────────────────────────────────────────
     if shop_fee_burden_pct is not None:
@@ -155,7 +162,9 @@ def compare_to_industry(
 
         if fee_deviation < Decimal("-0.10"):
             fee_verdict = "better"
-            fee_label = f"Phí sàn {shop_fee_burden_pct:.0%} / GMV — thấp hơn ngành ({benchmark_fee:.0%})"
+            fee_label = (
+                f"Phí sàn {shop_fee_burden_pct:.0%} / GMV — thấp hơn ngành ({benchmark_fee:.0%})"
+            )
         elif fee_deviation > Decimal("0.15"):
             fee_verdict = "worse"
             fee_label = (
@@ -164,20 +173,24 @@ def compare_to_industry(
             )
         else:
             fee_verdict = "on_par"
-            fee_label = f"Phí sàn {shop_fee_burden_pct:.0%} / GMV — tương đương ngành ({benchmark_fee:.0%})"
+            fee_label = (
+                f"Phí sàn {shop_fee_burden_pct:.0%} / GMV — tương đương ngành ({benchmark_fee:.0%})"
+            )
 
-        results.append(BenchmarkComparison(
-            metric="fee_burden_pct",
-            metric_label="Tổng phí sàn / GMV",
-            shop_value=shop_fee_burden_pct,
-            industry_value=benchmark_fee,
-            deviation_pct=fee_deviation,
-            verdict=fee_verdict,
-            label=fee_label,
-            category=category,
-            source=SOURCE,
-            benchmark_version=BENCHMARK_VERSION,
-            last_updated=LAST_UPDATED,
-        ))
+        results.append(
+            BenchmarkComparison(
+                metric="fee_burden_pct",
+                metric_label="Tổng phí sàn / GMV",
+                shop_value=shop_fee_burden_pct,
+                industry_value=benchmark_fee,
+                deviation_pct=fee_deviation,
+                verdict=fee_verdict,
+                label=fee_label,
+                category=category,
+                source=SOURCE,
+                benchmark_version=BENCHMARK_VERSION,
+                last_updated=LAST_UPDATED,
+            )
+        )
 
     return results

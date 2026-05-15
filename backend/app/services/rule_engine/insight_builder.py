@@ -3,6 +3,7 @@ Insight Builder — orchestrates full Rule Engine pipeline.
 Input: list[RawOrderRow] + config
 Output: InsightData — immutable snapshot of all calculated metrics.
 """
+
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -14,7 +15,6 @@ from app.services.rule_engine.fee_calculator import (
     apply_fee_config,
     calculate_net_revenue,
     safe_divide,
-    select_fee_config_for_date,
 )
 from app.services.rule_engine.leak_detector import LeakItem, detect_top_leaks
 from app.services.rule_engine.pl_calculator import (
@@ -32,6 +32,7 @@ class InsightData:
     INVARIANT: all numbers here come from Rule Engine — NEVER from AI.
     This is the input passed to AI Service (serialized as JSON).
     """
+
     shop_id: str
     period_start: date
     period_end: date
@@ -46,7 +47,7 @@ class InsightData:
 
     # Derived outputs
     top_leaks: list[LeakItem] = field(default_factory=list)
-    top_skus: list[SKUSummary] = field(default_factory=list)      # top 20 by GMV
+    top_skus: list[SKUSummary] = field(default_factory=list)  # top 20 by GMV
     top_creators: list[CreatorSummary] = field(default_factory=list)
     action_triggers: list[ActionTrigger] = field(default_factory=list)
 
@@ -84,8 +85,7 @@ def build_insight(
     # Primary config = most recently effective (last in ascending-sorted list)
     primary_config = fee_configs[-1]
     fee_config_version = (
-        "+".join(c.version for c in fee_configs)
-        if len(fee_configs) > 1 else primary_config.version
+        "+".join(c.version for c in fee_configs) if len(fee_configs) > 1 else primary_config.version
     )
 
     if not rows:
@@ -115,22 +115,22 @@ def build_insight(
 
     # F-1B-04: Use full list for rule evaluation, cap snapshot at 50
     # Shops with 500+ creators would produce huge JSON blobs without this cap
-    TOP_CREATORS_SNAPSHOT_LIMIT = 50
+    top_creators_snapshot_limit = 50
 
     # 4. Aggregates
     gmv_total = sum((r.gmv for r in rows_with_fees), Decimal("0"))
     net_revenue = sum((calculate_net_revenue(r) for r in rows_with_fees), Decimal("0"))
     total_orders = len(rows_with_fees)
     refund_statuses = {"refunded", "returned", "cancelled"}
-    total_refunds = sum(
-        1 for r in rows_with_fees if r.status.lower() in refund_statuses
-    )
+    total_refunds = sum(1 for r in rows_with_fees if r.status.lower() in refund_statuses)
     refund_rate = safe_divide(Decimal(total_refunds), Decimal(total_orders))
 
     # 5. COGS coverage
     top_20_ids = {s.sku_id for s in top_skus}
     with_cogs = sum(1 for s in top_skus if s.total_cogs is not None)
-    cogs_coverage_pct = safe_divide(Decimal(with_cogs), Decimal(len(top_20_ids))) if top_20_ids else Decimal("0")
+    cogs_coverage_pct = (
+        safe_divide(Decimal(with_cogs), Decimal(len(top_20_ids))) if top_20_ids else Decimal("0")
+    )
     is_net_revenue_mode = cogs_coverage_pct < Decimal("0.5")
 
     # 6. Dates
@@ -139,7 +139,9 @@ def build_insight(
     period_end = max(dates)
 
     # 7. Leaks + triggers
-    top_leaks = detect_top_leaks(sku_summaries, creator_summaries, category_baselines, top_n=top_n_leaks)
+    top_leaks = detect_top_leaks(
+        sku_summaries, creator_summaries, category_baselines, top_n=top_n_leaks
+    )
     action_triggers = evaluate_rules(sku_summaries, creator_summaries, category_baselines)
 
     days_in_period = (period_end - period_start).days + 1
@@ -157,7 +159,7 @@ def build_insight(
         cash_in_14d=None,  # populated separately from settlement data
         top_leaks=top_leaks,
         top_skus=top_skus,
-        top_creators=creator_summaries[:TOP_CREATORS_SNAPSHOT_LIMIT],
+        top_creators=creator_summaries[:top_creators_snapshot_limit],
         action_triggers=action_triggers,
         rule_engine_version=rule_engine_version,
         fee_config_version=fee_config_version,

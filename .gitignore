@@ -30,6 +30,10 @@ yarn-error.log*
 *.swo
 *~
 
+# Security audit reports — keep out of source control
+PHASE_*_AUDIT_REPORT.md
+*_AUDIT_REPORT.md
+
 # Backend
 __pycache__/
 *.py[cod]

@@ -22,6 +22,7 @@ FIXES (cumulative through v1.0.0):
   IMPACT: Without this, all Shopee orders were stored with platform="tiktok" (server_default),
   breaking per-platform P&L queries and the ix_orders_shop_id_platform index.
 """
+
 import asyncio
 import uuid
 from datetime import date
@@ -33,7 +34,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
-from app.core.gates import get_ai_calls_limit
 from app.core.storage import download_file as storage_download
 from app.models.ai_action import AIAction
 from app.models.fee_config import FeeConfig
@@ -96,8 +96,11 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 sample_rows=parse_result.sample_rows_masked,
                 file_size_kb=session.file_size_bytes // 1024,
                 required_columns=[
-                    "tiktok_order_id", "gmv", "order_date",
-                    "platform_commission", "affiliate_commission",
+                    "tiktok_order_id",
+                    "gmv",
+                    "order_date",
+                    "platform_commission",
+                    "affiliate_commission",
                 ],
             )
             rescue_output = await run_import_rescue(rescue_input, str(session.shop_id), tier=_tier)
@@ -124,18 +127,23 @@ async def process_import(ctx: dict, session_id: str) -> None:
                     shop_id=session.shop_id,
                     import_session_id=session.id,
                     tiktok_order_id=row.tiktok_order_id,
-                    sku_id=row.sku_id, sku_name=row.sku_name,
-                    creator_id=row.creator_id, creator_name=row.creator_name,
-                    gmv=row.gmv, platform_commission=row.platform_commission,
+                    sku_id=row.sku_id,
+                    sku_name=row.sku_name,
+                    creator_id=row.creator_id,
+                    creator_name=row.creator_name,
+                    gmv=row.gmv,
+                    platform_commission=row.platform_commission,
                     affiliate_commission=row.affiliate_commission,
-                    voucher_cost=row.voucher_cost, shipping_subsidy=row.shipping_subsidy,
+                    voucher_cost=row.voucher_cost,
+                    shipping_subsidy=row.shipping_subsidy,
                     refund_amount=row.refund_amount,
                     transaction_fee=row.transaction_fee,
                     order_processing_fee=row.order_processing_fee,
                     quantity=row.quantity,
-                    order_date=row.order_date, status=row.status,
+                    order_date=row.order_date,
+                    status=row.status,
                     refund_reason_raw=row.refund_reason_raw,
-                    platform=_order_platform,   # FIX v2.0.1: was missing → all Shopee = "tiktok"
+                    platform=_order_platform,  # FIX v2.0.1: was missing → all Shopee = "tiktok"
                 )
                 for row in parse_result.rows
             ]
@@ -151,7 +159,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # before a mid-period rate change use the correct (older) rates.
             shop = session.shop
             platform = parse_result.platform
-            import_period_end   = parse_result.date_range_end   or date.today()
+            import_period_end = parse_result.date_range_end or date.today()
             import_period_start = parse_result.date_range_start or import_period_end
 
             def _build_fee_config(db_row) -> FeeConfigData:
@@ -161,36 +169,17 @@ async def process_import(ctx: dict, session_id: str) -> None:
                     transaction_fee_rate=db_row.transaction_fee_rate,
                     order_processing_fee_per_order=db_row.order_processing_fee_per_order,
                     category_overrides={
-                        k: Decimal(str(v))
-                        for k, v in (db_row.category_overrides or {}).items()
+                        k: Decimal(str(v)) for k, v in (db_row.category_overrides or {}).items()
                     },
                     effective_from=db_row.effective_from,
                     effective_to=db_row.effective_to,
                 )
 
-            fee_configs_db = (await db.scalars(
-                select(FeeConfig)
-                .where(
-                    FeeConfig.platform == platform,
-                    FeeConfig.effective_from <= import_period_end,
-                    or_(
-                        FeeConfig.effective_to.is_(None),
-                        FeeConfig.effective_to >= import_period_start,
-                    ),
-                )
-                .order_by(FeeConfig.effective_from.asc())
-            )).all()
-
-            if not fee_configs_db and platform != "tiktok":
-                log.warning(
-                    "process_import.no_platform_fee_config",
-                    platform=platform,
-                    session_id=session_id,
-                )
-                fee_configs_db = (await db.scalars(
+            fee_configs_db = (
+                await db.scalars(
                     select(FeeConfig)
                     .where(
-                        FeeConfig.platform == "tiktok",
+                        FeeConfig.platform == platform,
                         FeeConfig.effective_from <= import_period_end,
                         or_(
                             FeeConfig.effective_to.is_(None),
@@ -198,7 +187,29 @@ async def process_import(ctx: dict, session_id: str) -> None:
                         ),
                     )
                     .order_by(FeeConfig.effective_from.asc())
-                )).all()
+                )
+            ).all()
+
+            if not fee_configs_db and platform != "tiktok":
+                log.warning(
+                    "process_import.no_platform_fee_config",
+                    platform=platform,
+                    session_id=session_id,
+                )
+                fee_configs_db = (
+                    await db.scalars(
+                        select(FeeConfig)
+                        .where(
+                            FeeConfig.platform == "tiktok",
+                            FeeConfig.effective_from <= import_period_end,
+                            or_(
+                                FeeConfig.effective_to.is_(None),
+                                FeeConfig.effective_to >= import_period_start,
+                            ),
+                        )
+                        .order_by(FeeConfig.effective_from.asc())
+                    )
+                ).all()
 
             if not fee_configs_db:
                 log.error(
@@ -234,9 +245,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # causing a silent key miss → COGS never applied → margin stays None.
             raw_cogs = shop.cogs_map or {}
             cogs_map: dict[str, Decimal] = {
-                str(sku_id).strip(): Decimal(str(val))
-                for sku_id, val in raw_cogs.items()
-                if val
+                str(sku_id).strip(): Decimal(str(val)) for sku_id, val in raw_cogs.items() if val
             }
 
             # 7. Run Rule Engine
@@ -273,42 +282,64 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 cash_in_30d=cash_in_30d,
                 cash_pending_total=cash_pending_total,
                 top_leaks_json=[
-                    {"type": leak.type, "id": leak.id, "name": leak.name,
-             "estimated_loss": str(leak.estimated_loss), "reason": leak.reason,
-                     "confidence": leak.confidence, "can_act_now": leak.can_act_now}
+                    {
+                        "type": leak.type,
+                        "id": leak.id,
+                        "name": leak.name,
+                        "estimated_loss": str(leak.estimated_loss),
+                        "reason": leak.reason,
+                        "confidence": leak.confidence,
+                        "can_act_now": leak.can_act_now,
+                    }
                     for leak in insight_data.top_leaks
                 ],
                 top_skus_json=[
-                    {"sku_id": s.sku_id, "sku_name": s.sku_name,
-                     "gmv": str(s.gmv), "net_revenue": str(s.net_revenue),
-                     "order_count": s.order_count, "total_quantity": s.total_quantity,
-                     "refund_rate": str(s.refund_rate),
-                     "margin_pct": str(s.margin_pct) if s.margin_pct is not None else None,
-                     "margin": str(s.margin) if s.margin is not None else None,
-                     "gmv_rank": s.gmv_rank,
-                     "affiliate_commission": str(s.affiliate_commission),
-                     "voucher_cost": str(s.voucher_cost),
-                     "health_status": s.health_status,
-                     "health_reasons": s.health_reasons}
+                    {
+                        "sku_id": s.sku_id,
+                        "sku_name": s.sku_name,
+                        "gmv": str(s.gmv),
+                        "net_revenue": str(s.net_revenue),
+                        "order_count": s.order_count,
+                        "total_quantity": s.total_quantity,
+                        "refund_rate": str(s.refund_rate),
+                        "margin_pct": str(s.margin_pct) if s.margin_pct is not None else None,
+                        "margin": str(s.margin) if s.margin is not None else None,
+                        "gmv_rank": s.gmv_rank,
+                        "affiliate_commission": str(s.affiliate_commission),
+                        "voucher_cost": str(s.voucher_cost),
+                        "health_status": s.health_status,
+                        "health_reasons": s.health_reasons,
+                    }
                     for s in insight_data.top_skus
                 ],
                 top_creators_json=[
-                    {"creator_id": c.creator_id, "creator_name": c.creator_name,
-                     "attributed_gmv": str(c.attributed_gmv),
-                     "attributed_net_revenue": str(c.attributed_net_revenue),
-                     "total_commission": str(c.total_commission),
-                     "order_count": c.order_count,
-                     "revenue_efficiency": str(c.revenue_efficiency) if c.revenue_efficiency is not None else None,
-                     "performance_label": c.performance_label,
-                     "suggested_max_commission_rate": str(c.suggested_max_commission_rate)
-                         if c.suggested_max_commission_rate is not None else None}
+                    {
+                        "creator_id": c.creator_id,
+                        "creator_name": c.creator_name,
+                        "attributed_gmv": str(c.attributed_gmv),
+                        "attributed_net_revenue": str(c.attributed_net_revenue),
+                        "total_commission": str(c.total_commission),
+                        "order_count": c.order_count,
+                        "revenue_efficiency": str(c.revenue_efficiency)
+                        if c.revenue_efficiency is not None
+                        else None,
+                        "performance_label": c.performance_label,
+                        "suggested_max_commission_rate": str(c.suggested_max_commission_rate)
+                        if c.suggested_max_commission_rate is not None
+                        else None,
+                    }
                     for c in insight_data.top_creators
                 ],
                 action_triggers_json=[
-                    {"rule_id": t.rule_id, "entity_type": t.entity_type,
-                     "entity_id": t.entity_id, "entity_name": t.entity_name,
-                     "metric_key": t.metric_key, "metric_value": str(t.metric_value),
-                     "priority": t.priority}
+                    {
+                        "rule_id": t.rule_id,
+                        "entity_type": t.entity_type,
+                        "entity_id": t.entity_id,
+                        "entity_name": t.entity_name,
+                        "metric_key": t.metric_key,
+                        "metric_value": str(t.metric_value),
+                        "priority": t.priority,
+                    }
                     for t in insight_data.action_triggers
                 ],
                 rule_engine_version=insight_data.rule_engine_version,
@@ -337,18 +368,21 @@ async def process_import(ctx: dict, session_id: str) -> None:
             )
             # Aha Narrator is non-critical — a failure must not abort the import.
             try:
-                await run_aha_narrator(aha_input, str(session.shop_id), str(snapshot.id), tier=_tier)
+                await run_aha_narrator(
+                    aha_input, str(session.shop_id), str(snapshot.id), tier=_tier
+                )
             except Exception as aha_err:
-                log.warning("process_import.aha_narrator_failed",
-                            session_id=session_id, error=str(aha_err))
+                log.warning(
+                    "process_import.aha_narrator_failed", session_id=session_id, error=str(aha_err)
+                )
 
             # F-1B-06: explicit tier-based AI call limits (replaces opaque * 5 multiplier)
             # _tier already computed above (near step 3) for budget checks
             _tier_limits = {
-                "free":      settings.ai_max_calls_per_import_free,
-                "pro":       settings.ai_max_calls_per_import_pro,
-                "pro_trial": settings.ai_max_calls_per_import_pro,   # trial gets pro limit
-                "business":  settings.ai_max_calls_per_import_business,
+                "free": settings.ai_max_calls_per_import_free,
+                "pro": settings.ai_max_calls_per_import_pro,
+                "pro_trial": settings.ai_max_calls_per_import_pro,  # trial gets pro limit
+                "business": settings.ai_max_calls_per_import_business,
             }
             ai_limit = _tier_limits.get(_tier, settings.ai_max_calls_per_import_free)
             # 11. Run Action Coach — parallel calls via asyncio.gather() for latency
@@ -363,7 +397,11 @@ async def process_import(ctx: dict, session_id: str) -> None:
                         metric_key=trigger.metric_key,
                         metric_value=trigger.metric_value,
                         metric_label=_metric_label(trigger.metric_key),
-                        context_json={"rule_id": trigger.rule_id, "entity_type": trigger.entity_type, "priority": trigger.priority},
+                        context_json={
+                            "rule_id": trigger.rule_id,
+                            "entity_type": trigger.entity_type,
+                            "priority": trigger.priority,
+                        },
                     )
                     action_output = await run_action_coach(
                         action_input, str(session.shop_id), str(snapshot.id), tier=_tier
@@ -386,9 +424,12 @@ async def process_import(ctx: dict, session_id: str) -> None:
                         },
                     )
                 except Exception as coach_err:
-                    log.warning("process_import.action_coach_failed",
-                                session_id=session_id, rule_id=trigger.rule_id,
-                                error=str(coach_err))
+                    log.warning(
+                        "process_import.action_coach_failed",
+                        session_id=session_id,
+                        rule_id=trigger.rule_id,
+                        error=str(coach_err),
+                    )
                     return None
 
             coach_results = await asyncio.gather(*[_run_single_coach(t) for t in triggers])
@@ -435,12 +476,19 @@ async def process_import(ctx: dict, session_id: str) -> None:
             if session.file_path:
                 try:
                     from app.core.storage import delete_file as storage_delete_file
+
                     await storage_delete_file(session.file_path)
-                    log.info("process_import.storage_cleaned_on_failure",
-                             session_id=session_id, file_path=session.file_path)
+                    log.info(
+                        "process_import.storage_cleaned_on_failure",
+                        session_id=session_id,
+                        file_path=session.file_path,
+                    )
                 except Exception as cleanup_err:
-                    log.warning("process_import.storage_cleanup_failed",
-                                session_id=session_id, error=str(cleanup_err))
+                    log.warning(
+                        "process_import.storage_cleanup_failed",
+                        session_id=session_id,
+                        error=str(cleanup_err),
+                    )
 
 
 def _map_exception_to_user_message(exc: Exception) -> str:
@@ -456,19 +504,22 @@ def _map_exception_to_user_message(exc: Exception) -> str:
     if isinstance(exc, UnicodeDecodeError):
         return "File có encoding không hợp lệ. Vui lòng lưu lại dưới định dạng UTF-8 và thử lại."
     if isinstance(exc, ValueError) and "budget" in str(exc).lower():
-        return "Hệ thống AI đã đạt giới hạn sử dụng tháng này. Kết quả phân tích cơ bản vẫn khả dụng."
+        return (
+            "Hệ thống AI đã đạt giới hạn sử dụng tháng này. Kết quả phân tích cơ bản vẫn khả dụng."
+        )
     if isinstance(exc, MemoryError):
         return "File quá lớn để xử lý. Vui lòng chia nhỏ file (tối đa 30,000 đơn) và thử lại."
     return "Đã xảy ra lỗi trong quá trình xử lý file. Vui lòng thử lại hoặc liên hệ hỗ trợ."
 
 
 _METRIC_LABELS: dict[str, str] = {
-    "margin":             "Biên lợi nhuận",
-    "margin_pct":         "Tỷ lệ lợi nhuận",
-    "refund_rate":        "Tỷ lệ hoàn hàng",
+    "margin": "Biên lợi nhuận",
+    "margin_pct": "Tỷ lệ lợi nhuận",
+    "refund_rate": "Tỷ lệ hoàn hàng",
     "revenue_efficiency": "Hiệu quả doanh thu (creator)",
-    "cogs":               "Giá vốn",
+    "cogs": "Giá vốn",
 }
+
 
 def _metric_label(metric_key: str) -> str:
     return _METRIC_LABELS.get(metric_key, metric_key.replace("_", " ").title())
@@ -476,8 +527,8 @@ def _metric_label(metric_key: str) -> str:
 
 def _rule_to_action_type(rule_id: str) -> str:
     return {
-        "sku_margin_negative":   "reduce_voucher",
+        "sku_margin_negative": "reduce_voucher",
         "creator_roi_below_one": "pause_creator",
-        "sku_refund_spike":      "fix_pdp",
-        "cogs_missing_top_sku":  "check_cogs",
+        "sku_refund_spike": "fix_pdp",
+        "cogs_missing_top_sku": "check_cogs",
     }.get(rule_id, "check_cogs")

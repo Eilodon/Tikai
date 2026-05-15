@@ -124,9 +124,10 @@ class Settings(BaseSettings):
     def ai_budget_for_tier(self, tier: str) -> Decimal:
         """Return the monthly AI dollar budget for a given subscription tier."""
         mapping = {
-            "free":     self.ai_max_cost_per_month_usd_free,
-            "pro":      self.ai_max_cost_per_month_usd_pro,
-            "business": self.ai_max_cost_per_month_usd_business,
+            "free":      self.ai_max_cost_per_month_usd_free,
+            "pro":       self.ai_max_cost_per_month_usd_pro,
+            "pro_trial": self.ai_max_cost_per_month_usd_pro,   # trial gets pro budget
+            "business":  self.ai_max_cost_per_month_usd_business,
         }
         return Decimal(mapping.get(tier, self.ai_max_cost_per_month_usd_free))
 

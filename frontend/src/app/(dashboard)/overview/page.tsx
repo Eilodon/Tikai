@@ -48,6 +48,12 @@ export default function OverviewPage() {
   const dismiss  = useDismissAction()
   const recompute = useRecomputeInsight()
   const [recomputeError, setRecomputeError] = useState<string | null>(null)
+  // M-1: persist WowScreen dismissal across page refreshes — must be declared
+  // before early returns to obey Rules of Hooks
+  const [wowDismissed, setWowDismissed] = useState(() => {
+    if (typeof window === "undefined") return false
+    return localStorage.getItem("tikai_wow_dismissed") === "1"
+  })
 
   if (insightLoading) return <PageSkeleton />
 
@@ -62,10 +68,11 @@ export default function OverviewPage() {
     )
   }
 
-  // Show WowScreen on first import until user dismisses it
-  const [wowDismissed, setWowDismissed] = useState(false)
   if (insight.is_first_import && !wowDismissed) {
-    return <WowScreen insight={insight} onContinue={() => setWowDismissed(true)} />
+    return <WowScreen insight={insight} onContinue={() => {
+      localStorage.setItem("tikai_wow_dismissed", "1")
+      setWowDismissed(true)
+    }} />
   }
 
   const pendingActions = actionsData?.items?.filter((a) => a.status === "pending") ?? []

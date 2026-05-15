@@ -26,7 +26,9 @@ export async function GET(request: Request) {
       }
     )
     const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) return NextResponse.redirect(`${origin}${next}`)
+    // Always go through onboarding — it redirects to /overview if shop already exists.
+    // Skipping this would leave Google OAuth users with no shop in a stuck state.
+    if (!error) return NextResponse.redirect(`${origin}/onboarding`)
   }
 
   return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`)

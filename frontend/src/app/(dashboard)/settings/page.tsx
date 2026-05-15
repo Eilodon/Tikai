@@ -357,10 +357,11 @@ export default function SettingsPage() {
           <span className="text-sm text-gray-600">Gói hiện tại</span>
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
             shop?.subscription_tier === "business" ? "bg-purple-100 text-purple-700" :
-            shop?.subscription_tier === "pro" ? "bg-blue-100 text-blue-700" :
+            (shop?.subscription_tier === "pro" || shop?.subscription_tier === "pro_trial") ? "bg-blue-100 text-blue-700" :
             "bg-gray-100 text-gray-600"}`}>
             {shop?.subscription_tier === "business" ? "Business" :
-             shop?.subscription_tier === "pro" ? "Pro" : "Free"}
+             shop?.subscription_tier === "pro" ? "Pro" :
+             shop?.subscription_tier === "pro_trial" ? "Pro (dùng thử)" : "Free"}
           </span>
         </div>
         {(!shop?.subscription_tier || shop.subscription_tier === "free") && (
@@ -401,10 +402,11 @@ export default function SettingsPage() {
           <span className="text-sm text-gray-600">Gói đăng ký</span>
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
             shop?.subscription_tier === "business" ? "bg-purple-100 text-purple-700" :
-            shop?.subscription_tier === "pro" ? "bg-blue-100 text-blue-700" :
+            (shop?.subscription_tier === "pro" || shop?.subscription_tier === "pro_trial") ? "bg-blue-100 text-blue-700" :
             "bg-gray-100 text-gray-600"}`}>
             {shop?.subscription_tier === "business" ? "Business" :
-             shop?.subscription_tier === "pro" ? "Pro" : "Free"}
+             shop?.subscription_tier === "pro" ? "Pro" :
+             shop?.subscription_tier === "pro_trial" ? "Pro (dùng thử)" : "Free"}
           </span>
         </div>
       </div>

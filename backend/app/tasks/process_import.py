@@ -345,9 +345,10 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # F-1B-06: explicit tier-based AI call limits (replaces opaque * 5 multiplier)
             # _tier already computed above (near step 3) for budget checks
             _tier_limits = {
-                "free":     settings.ai_max_calls_per_import_free,
-                "pro":      settings.ai_max_calls_per_import_pro,
-                "business": settings.ai_max_calls_per_import_business,
+                "free":      settings.ai_max_calls_per_import_free,
+                "pro":       settings.ai_max_calls_per_import_pro,
+                "pro_trial": settings.ai_max_calls_per_import_pro,   # trial gets pro limit
+                "business":  settings.ai_max_calls_per_import_business,
             }
             ai_limit = _tier_limits.get(_tier, settings.ai_max_calls_per_import_free)
             # 11. Run Action Coach — parallel calls via asyncio.gather() for latency

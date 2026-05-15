@@ -78,5 +78,5 @@ async def get_current_shop(
         if expires and expires < datetime.now(timezone.utc):
             shop.subscription_tier = "free"
             shop.trial_expires_at = None
-            await db.commit()
+            await db.flush()   # S-2: flush only — commit happens when request ends
     return shop

@@ -227,9 +227,13 @@ def calculate_creator_summaries(rows: list[RawOrderRow]) -> list[CreatorSummary]
         # = max 80% of margin vs GMV as commission, to keep seller profitable
         gmv = a["gmv"]
         suggested_max_commission_rate: Decimal | None = None
-        if gmv > 0 and net_rev > 0:
-            margin_ratio = net_rev / gmv
-            suggested_max_commission_rate = (margin_ratio * Decimal("0.8")).quantize(Decimal("0.0001"))
+        if gmv > 0:
+            if net_rev <= 0:
+                # Creator is destroying value — suggest stopping (rate = 0)
+                suggested_max_commission_rate = Decimal("0")
+            else:
+                margin_ratio = net_rev / gmv
+                suggested_max_commission_rate = (margin_ratio * Decimal("0.8")).quantize(Decimal("0.0001"))
 
         summaries.append(CreatorSummary(
             creator_id=creator_id,

@@ -5,7 +5,9 @@ No auth, no DB reads. Data is hardcoded to show Tikai's capabilities.
 import uuid
 from datetime import date, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+
+from app.core.rate_limit import limiter
 
 router = APIRouter()
 
@@ -107,6 +109,7 @@ _DEMO_SNAPSHOT = {
 
 
 @router.get("/demo/snapshot")
-async def get_demo_snapshot():
-    """Public demo snapshot — no auth required. Returns static data."""
+@limiter.limit("60/minute")
+async def get_demo_snapshot(request: Request):
+    """Public demo snapshot — no auth required. Rate limited to 60/min/IP."""
     return _DEMO_SNAPSHOT

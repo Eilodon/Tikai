@@ -69,7 +69,9 @@ class PriceRecommendRequest(BaseModel):
 
 
 @router.post("/tools/price-recommend")
+@limiter.limit("120/hour")
 async def price_recommend(
+    request: Request,
     body: PriceRecommendRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -173,11 +175,13 @@ class SimulateRequest(BaseModel):
     sku_id: str
     affiliate_rate: Decimal | None = None
     voucher_rate: Decimal | None = None
-    price_change_pct: Decimal | None = None
+    price_change_pct: Decimal | None = Field(None, ge=Decimal("-0.5"), le=Decimal("0.5"))
 
 
 @router.post("/tools/simulate")
+@limiter.limit("60/hour")
 async def simulate(
+    request: Request,
     body: SimulateRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -239,8 +243,8 @@ async def simulate(
 
 class CampaignSKUInput(BaseModel):
     sku_id: str
-    planned_units: int = Field(..., gt=0)
-    price_change_pct: Decimal = Decimal("0")     # e.g. -0.20 = 20% flash discount
+    planned_units: int = Field(..., gt=0, le=100_000)
+    price_change_pct: Decimal = Field(Decimal("0"), ge=Decimal("-0.5"), le=Decimal("0.5"))
     affiliate_rate: Decimal | None = None
     voucher_rate: Decimal | None = None
 
@@ -251,7 +255,9 @@ class SimulateCampaignRequest(BaseModel):
 
 
 @router.post("/tools/simulate-campaign")
+@limiter.limit("20/hour")
 async def simulate_campaign(
+    request: Request,
     body: SimulateCampaignRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -313,7 +319,7 @@ async def simulate_campaign(
             "net_revenue": str(sku.net_revenue * scale),
             "affiliate_commission": str(sku.affiliate_commission * scale),
             "voucher_cost": str(sku.voucher_cost * scale),
-            "order_count": max(1, int(sku.order_count * float(scale))),
+            "order_count": max(1, int(Decimal(str(sku.order_count)) * scale)),
             "total_quantity": entry.planned_units,
         }
 

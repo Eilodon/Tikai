@@ -129,3 +129,57 @@ class TestAuthChain:
             "Without it, PATCH /shops/me/notifications raises NameError and "
             "the app fails to start."
         )
+
+
+class TestV21NewEndpointIDOR:
+    """F-V21-07: IDOR invariants for all endpoints added in v2.1.0."""
+
+    def test_simulate_snapshot_isolation(self):
+        """POST /tools/simulate must filter InsightSnapshot by shop_id."""
+        from app.api.v1.tools import simulate
+        src = inspect.getsource(simulate)
+        assert "InsightSnapshot.shop_id == shop.id" in src, (
+            "simulate must filter InsightSnapshot by shop_id — "
+            "removing this allows cross-shop snapshot access."
+        )
+
+    def test_simulate_campaign_snapshot_isolation(self):
+        """POST /tools/simulate-campaign must filter InsightSnapshot by shop_id."""
+        from app.api.v1.tools import simulate_campaign
+        src = inspect.getsource(simulate_campaign)
+        assert "InsightSnapshot.shop_id == shop.id" in src, (
+            "simulate_campaign must filter InsightSnapshot by shop_id."
+        )
+
+    def test_benchmark_snapshot_isolation(self):
+        """GET /insights/{id}/benchmark must filter InsightSnapshot by shop_id."""
+        from app.api.v1.insights import get_benchmark
+        src = inspect.getsource(get_benchmark)
+        assert "InsightSnapshot.shop_id == shop.id" in src, (
+            "get_benchmark must filter InsightSnapshot by shop_id."
+        )
+
+    def test_push_subscription_uses_get_current_shop(self):
+        """POST /shops/me/push-subscription must use get_current_shop dependency."""
+        from app.api.v1.shops import save_push_subscription
+        src = inspect.getsource(save_push_subscription)
+        assert "get_current_shop" in src, (
+            "save_push_subscription must be gated by get_current_shop — "
+            "without it any authenticated user could overwrite any shop's push subscription."
+        )
+
+    def test_price_recommend_auth_uses_get_current_shop(self):
+        """POST /tools/price-recommend (auth) must use get_current_shop dependency."""
+        from app.api.v1.tools import price_recommend
+        src = inspect.getsource(price_recommend)
+        assert "get_current_shop" in src, (
+            "price_recommend must be gated by get_current_shop."
+        )
+
+    def test_tools_module_uses_get_current_shop(self):
+        """All auth-required tool endpoints route through get_current_shop."""
+        from app.api.v1 import tools
+        src = inspect.getsource(tools)
+        assert "get_current_shop" in src, (
+            "tools module must use get_current_shop for auth-required endpoints."
+        )

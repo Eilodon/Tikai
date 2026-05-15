@@ -205,19 +205,19 @@ async def get_benchmark(
 
     # Compute shop-level margin_pct from top_skus (weighted by GMV)
     top_skus = _safe_parse(SKUSummaryItem, snapshot.top_skus_json or [])
-    total_gmv = sum(float(s.gmv) for s in top_skus)
+    total_gmv = sum(s.gmv for s in top_skus)
     shop_margin_pct = None
     if total_gmv > 0:
         weighted_margin = sum(
-            float(s.margin_pct) * float(s.gmv)
+            s.margin_pct * s.gmv
             for s in top_skus
             if s.margin_pct is not None
         )
         skus_with_margin_gmv = sum(
-            float(s.gmv) for s in top_skus if s.margin_pct is not None
+            s.gmv for s in top_skus if s.margin_pct is not None
         )
         if skus_with_margin_gmv > 0:
-            shop_margin_pct = Decimal(str(weighted_margin / skus_with_margin_gmv))
+            shop_margin_pct = weighted_margin / skus_with_margin_gmv
 
     # Compute fee burden = (gmv - net_revenue) / gmv
     gmv_total = snapshot.gmv_total

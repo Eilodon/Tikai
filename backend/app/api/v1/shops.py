@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -138,8 +138,19 @@ async def update_notification_settings(
     return ShopResponse.model_validate(shop)
 
 
+class _PushSubscriptionKeys(BaseModel):
+    auth: str = Field(max_length=256)
+    p256dh: str = Field(max_length=512)
+
+
+class _PushSubscriptionPayload(BaseModel):
+    endpoint: str = Field(max_length=500)
+    expirationTime: int | None = None
+    keys: _PushSubscriptionKeys
+
+
 class PushSubscriptionRequest(BaseModel):
-    subscription: dict  # Web Push PushSubscription JSON from browser
+    subscription: _PushSubscriptionPayload
 
 
 @router.post("/shops/me/push-subscription", status_code=204)
@@ -149,6 +160,6 @@ async def save_push_subscription(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Save browser Web Push subscription for this shop."""
-    shop.push_subscription_json = body.subscription
+    shop.push_subscription_json = body.subscription.model_dump()
     await db.flush()
 

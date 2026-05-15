@@ -6,7 +6,7 @@ The cron itself is integration-level; here we cover the pure logic in isolation.
 from decimal import Decimal
 from types import SimpleNamespace
 
-from app.tasks.daily_alerts import _build_alert_message, ALERT_LEAK_THRESHOLD
+from app.tasks.daily_alerts import ALERT_LEAK_THRESHOLD, _build_alert_message
 
 
 def _snapshot(top_leaks=None, top_skus=None):
@@ -45,10 +45,12 @@ class TestBuildAlertMessage:
         assert "SKU-Y" in body
 
     def test_leak_picks_max_loss(self):
-        s = _snapshot(top_leaks=[
-            {"name": "small", "estimated_loss": "100000"},
-            {"name": "BIG", "estimated_loss": "1000000"},
-        ])
+        s = _snapshot(
+            top_leaks=[
+                {"name": "small", "estimated_loss": "100000"},
+                {"name": "BIG", "estimated_loss": "1000000"},
+            ]
+        )
         result = _build_alert_message(s)
         assert result is not None
         _, body = result

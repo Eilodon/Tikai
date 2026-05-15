@@ -141,6 +141,13 @@ export interface ShopResponse {
   subscription_tier: string
   fee_config_version: string
   trial_expires_at?: string | null
+  tiktok_shop_id?: string | null
+  is_active?: boolean
+  notification_email?: string | null
+  email_digest_enabled?: boolean
+  category?: string | null
+  seller_phone?: string | null
+  zns_enabled?: boolean
 }
 
 export interface FeeScheduleResponse {
@@ -187,6 +194,10 @@ export interface CampaignSimulateResponse {
 
 export interface UpdateShopRequest {
   shop_name?: string
+  tiktok_shop_id?: string | null
+  category?: string | null
+  seller_phone?: string | null
+  zns_enabled?: boolean
 }
 
 export interface ImportSessionResponse {

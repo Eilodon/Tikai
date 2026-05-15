@@ -356,11 +356,14 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # Auto-sync creator profiles — fire and forget (must NEVER fail the import)
             try:
                 from app.services.creators.sync import sync_creators_from_snapshot
+
                 synced = await sync_creators_from_snapshot(
                     db, session.shop_id, snapshot.top_creators_json or []
                 )
                 await db.flush()
-                log.info("process_import.creators_synced", shop_id=str(session.shop_id), synced=synced)
+                log.info(
+                    "process_import.creators_synced", shop_id=str(session.shop_id), synced=synced
+                )
             except Exception as e:
                 log.warning("process_import.creator_sync_failed", error=str(e))
 

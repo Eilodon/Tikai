@@ -19,7 +19,6 @@ After this migration, process_import uses date-aware query:
     AND (effective_to IS NULL OR effective_to >= import_period_end)
 """
 from alembic import op
-import sqlalchemy as sa
 
 revision = "0006"
 down_revision = "0005"

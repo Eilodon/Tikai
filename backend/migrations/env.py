@@ -1,14 +1,22 @@
 import asyncio
 from logging.config import fileConfig
+
+from alembic import context
 from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-from alembic import context
 
 # Import all models so Alembic can detect them
 from app.core.config import get_settings
+from app.models import (  # noqa: F401
+    ai_action,
+    fee_config,
+    import_session,
+    insight_snapshot,
+    order,
+    shop,
+)
 from app.models.base import Base
-from app.models import shop, order, import_session, fee_config, insight_snapshot, ai_action  # noqa: F401
 
 settings = get_settings()
 config = context.config

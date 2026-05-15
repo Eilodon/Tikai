@@ -539,6 +539,136 @@ export const cogsApi = {
     }),
 }
 
+// ── Reconcile ─────────────────────────────────────────────────────────────────
+
+export interface ReconcileResponse {
+  total_payout: string          // Decimal as string
+  expected_payout: string
+  gap: string                   // positive = settlement > expected; negative = shortfall
+  gap_pct: string               // 0–1 absolute ratio
+
+  // Hidden cost breakdown
+  shipping_adjustments_total: string
+  refund_admin_fees_total: string
+  non_clawback_commissions: string
+  reserve_held: string
+
+  // Actionable signals
+  high_shipping_adj_skus: string[]
+  commission_waste_on_returns: string
+
+  // Verdict
+  verdict: "matched" | "minor_gap" | "major_gap" | "investigate"
+  action_items_vi: string[]
+
+  // Metadata
+  settlement_rows_parsed: number
+  snapshot_id: string | null
+}
+
+export const reconcileApi = {
+  upload: (
+    token: string,
+    file: File,
+    opts: { snapshotId?: string; expectedPayout?: string },
+  ) => {
+    const formData = new FormData()
+    formData.append("file", file)
+
+    const params = new URLSearchParams()
+    if (opts.snapshotId) params.set("snapshot_id", opts.snapshotId)
+    if (opts.expectedPayout) params.set("expected_payout", opts.expectedPayout)
+    const qs = params.toString()
+
+    return request<ReconcileResponse>(`/v1/reconcile${qs ? `?${qs}` : ""}`, {
+      method: "POST",
+      body: formData,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+}
+
+// ── Creator CRM ───────────────────────────────────────────────────────────────
+
+export interface CreatorProfileResponse {
+  id: string
+  shop_id: string
+  creator_id: string
+  creator_name: string
+  gmv_30d: string
+  net_revenue_30d: string
+  revenue_efficiency_30d: string | null
+  avg_refund_rate: string
+  total_orders_lifetime: number
+  last_order_date: string | null
+  total_commission_paid: string
+  commission_on_refunded_orders: string
+  status: "active" | "paused" | "blacklisted" | "vip"
+  tags: string[] | null
+  negotiated_rate: string | null
+  internal_note: string | null
+  contact_zalo: string | null
+  contact_email: string | null
+  performance_label: "star" | "break_even" | "losing"
+  suggested_max_commission: string | null
+}
+
+export interface CreatorProfileUpdateRequest {
+  status?: "active" | "paused" | "blacklisted" | "vip"
+  tags?: string[]
+  negotiated_rate?: string  // 0–1
+  internal_note?: string
+  contact_zalo?: string
+  contact_email?: string
+}
+
+export interface CreatorCohortInsight {
+  creator_id: string
+  creator_name: string
+  trend: "growing" | "stable" | "fading" | "new" | "churned"
+  gmv_first_period: string
+  gmv_last_period: string
+  change_pct: string
+  periods_active: number
+  avg_orders_per_period: string
+}
+
+export const creatorsApi = {
+  list: (
+    token: string,
+    opts: { status?: string; performance_label?: string; limit?: number } = {},
+  ) => {
+    const params = new URLSearchParams()
+    if (opts.status) params.set("status", opts.status)
+    if (opts.performance_label) params.set("performance_label", opts.performance_label)
+    if (opts.limit) params.set("limit", String(opts.limit))
+    const qs = params.toString()
+    return request<CreatorProfileResponse[]>(`/v1/creators${qs ? `?${qs}` : ""}`, { token })
+  },
+
+  getById: (token: string, profileId: string) =>
+    request<CreatorProfileResponse>(`/v1/creators/${profileId}`, { token }),
+
+  update: (token: string, profileId: string, data: CreatorProfileUpdateRequest) =>
+    request<CreatorProfileResponse>(`/v1/creators/${profileId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      token,
+    }),
+
+  sync: (token: string) =>
+    request<{ synced: number; message?: string }>("/v1/creators/sync", {
+      method: "POST",
+      token,
+    }),
+
+  getCohort: (token: string, periodIds: string[]) =>
+    request<CreatorCohortInsight[]>(
+      `/v1/insights/creator-cohort?period_ids=${periodIds.join(",")}`,
+      { token },
+    ),
+}
+
 // ── Notification settings ─────────────────────────────────────────────────────
 
 export interface NotificationSettingsRequest {

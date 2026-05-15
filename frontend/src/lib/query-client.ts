@@ -19,4 +19,8 @@ export const queryKeys = {
   actions:        () => ["actions"] as const,
   imports:        () => ["imports"] as const,
   importById:     (id: string) => ["imports", id] as const,
+  creators:       (filters?: { status?: string; performance_label?: string }) =>
+    ["creators", filters ?? {}] as const,
+  creatorById:    (id: string) => ["creators", id] as const,
+  creatorCohort:  (periodIds: string[]) => ["creators", "cohort", periodIds] as const,
 } as const

@@ -23,6 +23,7 @@ export function WowScreen({ insight, isDemo = false, onContinue }: WowScreenProp
   const nr = parseFloat(insight.net_revenue)
   const marginRatio = gmv > 0 ? nr / gmv : 0
   const isLowMargin = marginRatio < 0.10
+  const isNetRevenueMode = insight.is_net_revenue_mode
 
   function handleContinue() {
     if (onContinue) {
@@ -51,25 +52,40 @@ export function WowScreen({ insight, isDemo = false, onContinue }: WowScreenProp
         </div>
 
         <div className={`rounded-xl p-5 text-center ${
-          isLowMargin
-            ? "bg-red-50 border border-red-200"
-            : "bg-green-50 border border-green-200"
+          isNetRevenueMode
+            ? "bg-blue-50 border border-blue-200"
+            : isLowMargin
+              ? "bg-red-50 border border-red-200"
+              : "bg-green-50 border border-green-200"
         }`}>
-          <p className="text-sm font-medium text-gray-600 mb-1">Lãi thực sau tất cả phí</p>
-          <p className={`text-4xl font-bold ${isLowMargin ? "text-red-700" : "text-green-700"}`}>
+          <p className="text-sm font-medium text-gray-600 mb-1">
+            {isNetRevenueMode ? "Net Revenue (sau phí, trước COGS)" : "Lãi thực sau tất cả phí"}
+          </p>
+          <p className={`text-4xl font-bold ${
+            isNetRevenueMode
+              ? "text-blue-700"
+              : isLowMargin ? "text-red-700" : "text-green-700"
+          }`}>
             {formatVND(insight.net_revenue)}
           </p>
           <p className="text-sm text-gray-500 mt-1">
-            ({formatPct(String(marginRatio))} margin)
+            {isNetRevenueMode
+              ? `${formatPct(String(marginRatio))} so với GMV`
+              : `(${formatPct(String(marginRatio))} margin)`
+            }
           </p>
-          {isLowMargin && (
+          {isNetRevenueMode ? (
+            <p className="text-xs text-blue-700 mt-2 font-medium">
+              Nhập giá vốn để biết chính xác lãi/lỗ →
+            </p>
+          ) : isLowMargin ? (
             <p className="text-xs text-red-600 mt-2 font-medium">
               ⚠ Margin thấp — có {insight.top_leaks.length} điểm rò rỉ cần xử lý
             </p>
-          )}
+          ) : null}
         </div>
 
-        {topLeak && parseFloat(topLeak.estimated_loss) > 0 && (
+        {topLeak && parseFloat(topLeak.estimated_loss) > 0 ? (
           <div className="bg-gray-50 rounded-xl p-4 space-y-1">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
               Đang rò rỉ lớn nhất
@@ -82,13 +98,26 @@ export function WowScreen({ insight, isDemo = false, onContinue }: WowScreenProp
               {LEAK_REASON_VI[topLeak.reason] ?? topLeak.reason}
             </p>
           </div>
-        )}
+        ) : isNetRevenueMode && insight.top_skus.length > 0 ? (
+          <div className="bg-gray-50 rounded-xl p-4 space-y-1">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+              SKU bán chạy nhất kỳ này
+            </p>
+            <p className="font-semibold text-sm truncate">{insight.top_skus[0].sku_name}</p>
+            <p className="text-gray-900 font-bold text-lg">
+              {formatVND(insight.top_skus[0].gmv)}
+            </p>
+            <p className="text-xs text-gray-500">
+              Nhập giá vốn để biết SKU này đang lãi hay lỗ thật
+            </p>
+          </div>
+        ) : null}
 
         <button
           onClick={handleContinue}
           className="w-full bg-gray-900 text-white py-3 rounded-xl font-medium hover:bg-gray-700 transition-colors"
         >
-          Xem chi tiết & cách fix →
+          {isNetRevenueMode ? "Xem chi tiết →" : "Xem chi tiết & cách fix →"}
         </button>
       </div>
     </div>

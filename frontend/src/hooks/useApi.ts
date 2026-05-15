@@ -1,7 +1,7 @@
 "use client"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { queryKeys } from "@/lib/query-client"
-import { insightsApi, actionsApi, shopsApi, importsApi, livestreamApi, type AIActionListResponse, type LiveStreamCreateRequest } from "@/lib/api"
+import { insightsApi, actionsApi, shopsApi, importsApi, livestreamApi, reconcileApi, creatorsApi, type AIActionListResponse, type LiveStreamCreateRequest, type ReconcileResponse, type CreatorProfileResponse, type CreatorProfileUpdateRequest } from "@/lib/api"
 import { getAuthToken } from "@/lib/supabase"
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
@@ -148,5 +148,67 @@ export function useUpdateLiveStreamResults() {
     mutationFn: ({ id, data }: { id: string; data: any }) =>
       withToken((t) => livestreamApi.updateResults(t, id, data)),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["livestream"] }),
+  })
+}
+
+// ── Reconcile ─────────────────────────────────────────────────────────────────
+
+export function useReconcile() {
+  return useMutation({
+    mutationFn: ({
+      file,
+      snapshotId,
+      expectedPayout,
+    }: { file: File; snapshotId?: string; expectedPayout?: string }) =>
+      withToken((t) => reconcileApi.upload(t, file, { snapshotId, expectedPayout })),
+  })
+}
+
+// ── Creators ──────────────────────────────────────────────────────────────────
+
+export function useCreators(filters: { status?: string; performance_label?: string } = {}) {
+  return useQuery({
+    queryKey: queryKeys.creators(filters),
+    queryFn: () => withToken((t) => creatorsApi.list(t, filters)),
+    retry: (failureCount, error: any) => {
+      if (error?.status === 402) return false
+      return failureCount < 1
+    },
+  })
+}
+
+export function useCreator(profileId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.creatorById(profileId ?? ""),
+    queryFn: () => withToken((t) => creatorsApi.getById(t, profileId!)),
+    enabled: !!profileId,
+  })
+}
+
+export function useUpdateCreator() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ profileId, data }: { profileId: string; data: CreatorProfileUpdateRequest }) =>
+      withToken((t) => creatorsApi.update(t, profileId, data)),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: queryKeys.creators() })
+      qc.invalidateQueries({ queryKey: queryKeys.creatorById(vars.profileId) })
+    },
+  })
+}
+
+export function useSyncCreators() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => withToken((t) => creatorsApi.sync(t)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.creators() }),
+  })
+}
+
+export function useCreatorCohort(periodIds: string[]) {
+  return useQuery({
+    queryKey: queryKeys.creatorCohort(periodIds),
+    queryFn: () => withToken((t) => creatorsApi.getCohort(t, periodIds)),
+    enabled: periodIds.length >= 2,
   })
 }

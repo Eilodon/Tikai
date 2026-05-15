@@ -17,6 +17,7 @@ from app.core.config import get_settings
 from app.services.email.client import send_weekly_digest
 from app.tasks.process_import import process_import
 from app.tasks.verify_action_impact import verify_action_impact
+from app.tasks.daily_alerts import trigger_daily_alerts
 
 settings = get_settings()
 log = structlog.get_logger()
@@ -295,10 +296,12 @@ class WorkerSettings:
         run_weekly_receipts,  # deprecated shim — kept so old enqueued jobs don't 404
         verify_action_impact,
         cleanup_stuck_imports,
+        trigger_daily_alerts,
     ]
     cron_jobs = [
         cron(trigger_weekly_receipts, weekday=0, hour=1, minute=0),
         cron(cleanup_stuck_imports, minute=5),  # F-08: runs at :05 every hour
+        cron(trigger_daily_alerts, hour=1, minute=15),  # daily 8:15AM VN
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     on_startup = startup

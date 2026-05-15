@@ -21,6 +21,7 @@ import { SkeletonCard } from "@/components/common/MoneyDisplay"
 import { WowScreen } from "@/components/insights/WowScreen"
 import { WowInsightBanner } from "@/components/insights/WowInsightBanner"
 import { ActivationProgress } from "@/components/ActivationProgress"
+import { formatVND } from "@/lib/api"
 
 function CollapsibleSection({
   title, defaultOpen = false, children,
@@ -113,27 +114,41 @@ export default function OverviewPage() {
   return (
     <div className="space-y-6">
       {/* COGS Nudge Banner — show when fewer than 50% SKUs have COGS */}
-      {insight?.is_net_revenue_mode && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
-          <span className="text-lg mt-0.5">💡</span>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-amber-900">
-              Đang hiển thị Net Revenue — chưa có Margin
-            </p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              Nhập giá vốn (COGS) để Tikai tính được margin chính xác và phát hiện SKU lỗ.
-              {insight.cogs_coverage_pct && parseFloat(insight.cogs_coverage_pct) > 0
-                ? ` (${Math.round(parseFloat(insight.cogs_coverage_pct) * 100)}% SKU đã có giá vốn)`
-                : ""}
-            </p>
+      {insight?.is_net_revenue_mode && (() => {
+        const cogsMissingSkus = insight.top_skus.filter((s) => s.margin === null)
+        const topRisk = cogsMissingSkus[0]
+
+        return (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="text-lg mt-0.5">💡</span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-900">
+                  Đang hiển thị Net Revenue — chưa có Margin
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Nhập giá vốn (COGS) để Tikai tính được margin chính xác và phát hiện SKU lỗ.
+                  {insight.cogs_coverage_pct && parseFloat(insight.cogs_coverage_pct) > 0
+                    ? ` (${Math.round(parseFloat(insight.cogs_coverage_pct) * 100)}% SKU đã có giá vốn)`
+                    : ""}
+                </p>
+              </div>
+              <a href="/settings"
+                className="text-xs font-medium text-amber-800 border border-amber-300
+                           rounded-lg px-3 py-1.5 hover:bg-amber-100 whitespace-nowrap transition-colors">
+                Nhập giá vốn →
+              </a>
+            </div>
+
+            {topRisk && (
+              <div className="border-t border-amber-200 pt-3 text-xs text-amber-900">
+                <span className="font-semibold">{topRisk.sku_name}</span> đang bán chạy nhất
+                ({formatVND(topRisk.gmv)} GMV) — nhưng chưa biết lãi/lỗ thật.
+              </div>
+            )}
           </div>
-          <a href="/settings"
-            className="text-xs font-medium text-amber-800 border border-amber-300
-                       rounded-lg px-3 py-1.5 hover:bg-amber-100 whitespace-nowrap transition-colors">
-            Nhập giá vốn →
-          </a>
-        </div>
-      )}
+        )
+      })()}
 
       {insight.is_partial_period && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm">

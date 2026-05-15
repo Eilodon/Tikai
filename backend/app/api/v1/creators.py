@@ -21,6 +21,7 @@ from app.core.rate_limit import limiter
 from app.models.creator_profile import CreatorProfile
 from app.models.insight_snapshot import InsightSnapshot
 from app.models.shop import Shop
+from app.services.creators.sync import sync_creators_from_snapshot
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -207,58 +208,7 @@ async def sync_creators(
     if not creators_raw:
         return {"synced": 0, "message": "Không có creator trong snapshot mới nhất."}
 
-    upserted = 0
-    for c in creators_raw:
-        creator_id = c.get("creator_id")
-        if not creator_id:
-            continue
-
-        gmv = Decimal(str(c.get("attributed_gmv", "0")))
-        net_rev = Decimal(str(c.get("attributed_net_revenue", "0")))
-        commission = Decimal(str(c.get("total_commission", "0")))
-        order_count = int(c.get("order_count", 0))
-        commission_on_refunds = Decimal(str(c.get("commission_on_refunded_orders", "0")))
-        performance_label = c.get("performance_label", "break_even")
-        suggested_rate_raw = c.get("suggested_max_commission_rate")
-        suggested_rate = Decimal(str(suggested_rate_raw)) if suggested_rate_raw else None
-
-        rev_eff_raw = c.get("revenue_efficiency")
-        rev_eff = Decimal(str(rev_eff_raw)) if rev_eff_raw else None
-
-        stmt = (
-            pg_insert(CreatorProfile)
-            .values(
-                id=uuid.uuid4(),
-                shop_id=shop.id,
-                creator_id=creator_id,
-                creator_name=c.get("creator_name", creator_id),
-                gmv_30d=gmv,
-                net_revenue_30d=net_rev,
-                revenue_efficiency_30d=rev_eff,
-                total_orders_lifetime=order_count,
-                total_commission_paid=commission,
-                commission_on_refunded_orders=commission_on_refunds,
-                performance_label=performance_label,
-                suggested_max_commission=suggested_rate,
-            )
-            .on_conflict_do_update(
-                constraint="uq_creator_profiles_shop_creator",
-                set_={
-                    "creator_name": c.get("creator_name", creator_id),
-                    "gmv_30d": gmv,
-                    "net_revenue_30d": net_rev,
-                    "revenue_efficiency_30d": rev_eff,
-                    "total_orders_lifetime": order_count,
-                    "total_commission_paid": commission,
-                    "commission_on_refunded_orders": commission_on_refunds,
-                    "performance_label": performance_label,
-                    "suggested_max_commission": suggested_rate,
-                },
-            )
-        )
-        await db.execute(stmt)
-        upserted += 1
-
+    upserted = await sync_creators_from_snapshot(db, shop.id, creators_raw)
     await db.flush()
     log.info("creators.sync", shop_id=str(shop.id), upserted=upserted)
     return {"synced": upserted}

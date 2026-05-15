@@ -12,8 +12,8 @@ WHY: Multi-platform support (Shopee first, Lazada planned).
 All columns use server_default for safe backward compatibility —
 existing rows get "tiktok" automatically.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0005"
 down_revision = "0004"

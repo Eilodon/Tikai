@@ -39,6 +39,10 @@ class Shop(Base, TimestampMixin):
     # v2.1.0: shop category for category-aware refund baselines (industry_data.py slugs)
     category: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # ZNS prep — Vietnamese phone + ZNS notification toggle
+    seller_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    zns_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Relationships
     import_sessions: Mapped[list[ImportSession]] = relationship(back_populates="shop")  # noqa: F821
     insight_snapshots: Mapped[list[InsightSnapshot]] = relationship(back_populates="shop")  # noqa: F821

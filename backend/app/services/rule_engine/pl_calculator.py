@@ -14,6 +14,21 @@ from app.services.rule_engine.fee_calculator import calculate_net_revenue, safe_
 SKUHealthStatus = Literal["healthy", "warning", "critical"]
 
 
+def compute_cm3(
+    cm2: Decimal,
+    gmv: Decimal,
+    livestream_costs: list[dict],
+) -> tuple[Decimal, Decimal | None]:
+    """Returns (cm3, cm3_margin_pct). cm3_margin_pct is None if gmv=0."""
+    total_direct_cost = sum(
+        Decimal(str(lc.get("ads_cost", 0))) + Decimal(str(lc.get("product_sample_cost", 0)))
+        for lc in livestream_costs
+    )
+    cm3 = cm2 - total_direct_cost
+    cm3_pct = cm3 / gmv if gmv > 0 else None
+    return cm3, cm3_pct
+
+
 @dataclass
 class SKUSummary:
     sku_id: str

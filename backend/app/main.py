@@ -19,7 +19,9 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.api.errors import register_exception_handlers
 from app.api.v1 import (
     actions,
+    admin,
     cogs,
+    creators,
     demo,
     imports,
     insights,
@@ -144,6 +146,8 @@ app.include_router(livestream.router, prefix="/v1", tags=["livestream"])
 app.include_router(tools.router, prefix="/v1", tags=["tools"])
 app.include_router(reconcile.router, prefix="/v1", tags=["reconcile"])
 app.include_router(demo.router, prefix="/v1", tags=["demo"])
+app.include_router(creators.router, prefix="/v1", tags=["creators"])
+app.include_router(admin.router, prefix="/v1", tags=["admin"])
 
 # ── Health Endpoints ──────────────────────────────────────────────────────────
 

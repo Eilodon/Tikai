@@ -30,6 +30,10 @@ class LiveStreamSession(Base):
     other_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # Time window for auto-attribution
+    start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Results (filled after live — can be updated)
     attributed_gmv: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     attributed_orders: Mapped[int] = mapped_column(Integer, default=0)

@@ -20,6 +20,7 @@ import { WeeklyReceipt } from "@/components/receipt/WeeklyReceipt"
 import { SkeletonCard } from "@/components/common/MoneyDisplay"
 import { WowScreen } from "@/components/insights/WowScreen"
 import { WowInsightBanner } from "@/components/insights/WowInsightBanner"
+import { ActivationProgress } from "@/components/ActivationProgress"
 
 function CollapsibleSection({
   title, defaultOpen = false, children,
@@ -53,6 +54,14 @@ export default function OverviewPage() {
   const [wowDismissed, setWowDismissed] = useState(() => {
     if (typeof window === "undefined") return false
     return localStorage.getItem("tikai_wow_dismissed") === "1"
+  })
+  const [hasUsedSimulator] = useState(() => {
+    if (typeof window === "undefined") return false
+    return localStorage.getItem("tikai_used_simulator") === "1"
+  })
+  const [hasReconciledSettlement] = useState(() => {
+    if (typeof window === "undefined") return false
+    return localStorage.getItem("tikai_reconciled_settlement") === "1"
   })
 
   if (insightLoading) return <PageSkeleton />
@@ -155,6 +164,15 @@ export default function OverviewPage() {
 
       <WowInsightBanner insight={insight} />
       <PLSummary insight={insight} />
+
+      <ActivationProgress
+        hasImported={true}
+        hasCogsEntered={parseFloat(insight.cogs_coverage_pct ?? "0") > 0}
+        hasActedOnAction={(actionsData?.items ?? []).some((a) => a.status === "completed")}
+        hasUsedSimulator={hasUsedSimulator}
+        hasReconciledSettlement={hasReconciledSettlement}
+      />
+
       <LeakList leaks={insight.top_leaks} />
 
       {!actionsLoading && pendingActions.length > 0 && (

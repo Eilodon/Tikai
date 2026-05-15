@@ -51,3 +51,4 @@ venv/
 # IDE
 .DS_Store
 .vscode/
+frontend/tsconfig.tsbuildinfo

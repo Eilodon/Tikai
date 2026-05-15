@@ -41,6 +41,7 @@ from app.schemas.insight import (
 from app.services.benchmarks.industry_data import LAST_UPDATED, Category, compare_to_industry
 from app.services.rule_engine import FeeConfigData, build_insight
 from app.services.rule_engine.baselines import CATEGORY_REFUND_BASELINES
+from app.services.rule_engine.creator_cohort import analyze_creator_cohort
 from app.services.rule_engine.price_recommender import recommend_price
 
 MAX_ORDERS_RECOMPUTE = 50_000  # cap for recompute endpoint to prevent OOM
@@ -228,12 +229,62 @@ async def get_benchmark(
     if gmv_total and gmv_total > 0:
         shop_fee_burden_pct = (gmv_total - net_revenue) / gmv_total
 
-    comparisons = compare_to_industry(
-        shop_refund_rate=snapshot.refund_rate,
-        shop_margin_pct=shop_margin_pct,
-        shop_fee_burden_pct=shop_fee_burden_pct,
-        category=category,
+    from app.core.redis import cache_get_safe
+
+    # Apply Redis overrides for benchmark values before comparison
+    async def _redis_override(metric: str, default: Decimal) -> Decimal:
+        key = f"tikai:benchmark:{category}:{metric}"
+        cached = await cache_get_safe(key)
+        if cached and "value" in cached:
+            try:
+                return Decimal(str(cached["value"]))
+            except Exception:
+                pass
+        return default
+
+    from app.services.benchmarks.industry_data import (
+        AVG_FEE_BURDEN,
+        MARGIN_BENCHMARKS,
+        REFUND_RATE_BENCHMARKS,
     )
+
+    # Load potentially overridden benchmark values
+    bench_refund = await _redis_override("refund_rate", REFUND_RATE_BENCHMARKS[category])
+    bench_margin = await _redis_override("margin_pct", MARGIN_BENCHMARKS[category])
+    bench_fee = await _redis_override("fee_burden_pct", AVG_FEE_BURDEN[category])
+
+    # Temporarily patch industry data with Redis overrides for comparison
+    import copy
+
+    patched_refund = copy.copy(REFUND_RATE_BENCHMARKS)
+    patched_refund[category] = bench_refund
+    patched_margin = copy.copy(MARGIN_BENCHMARKS)
+    patched_margin[category] = bench_margin
+    patched_fee = copy.copy(AVG_FEE_BURDEN)
+    patched_fee[category] = bench_fee
+
+    import app.services.benchmarks.industry_data as _ind
+
+    orig_r, orig_m, orig_f = (
+        _ind.REFUND_RATE_BENCHMARKS,
+        _ind.MARGIN_BENCHMARKS,
+        _ind.AVG_FEE_BURDEN,
+    )
+    _ind.REFUND_RATE_BENCHMARKS = patched_refund  # type: ignore[assignment]
+    _ind.MARGIN_BENCHMARKS = patched_margin  # type: ignore[assignment]
+    _ind.AVG_FEE_BURDEN = patched_fee  # type: ignore[assignment]
+
+    try:
+        comparisons = compare_to_industry(
+            shop_refund_rate=snapshot.refund_rate,
+            shop_margin_pct=shop_margin_pct,
+            shop_fee_burden_pct=shop_fee_burden_pct,
+            category=category,
+        )
+    finally:
+        _ind.REFUND_RATE_BENCHMARKS = orig_r  # type: ignore[assignment]
+        _ind.MARGIN_BENCHMARKS = orig_m  # type: ignore[assignment]
+        _ind.AVG_FEE_BURDEN = orig_f  # type: ignore[assignment]
 
     from datetime import date
 
@@ -768,3 +819,139 @@ async def export_snapshot_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Creator Cohort Report ─────────────────────────────────────────────────────
+
+
+@router.get("/insights/creator-cohort")
+@limiter.limit("20/hour")
+async def get_creator_cohort(
+    request: Request,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period_ids: str = Query(..., description="Comma-separated snapshot UUIDs (max 8)"),
+) -> list[dict]:
+    """Compare creator performance across multiple snapshot periods."""
+    raw_ids = [p.strip() for p in period_ids.split(",") if p.strip()]
+    if not raw_ids:
+        raise HTTPException(422, detail={"error": {"code": "MISSING_PERIOD_IDS"}})
+    if len(raw_ids) > 8:
+        raise HTTPException(422, detail={"error": {"code": "TOO_MANY_PERIODS", "max": 8}})
+
+    parsed_ids: list[uuid.UUID] = []
+    for raw in raw_ids:
+        try:
+            parsed_ids.append(uuid.UUID(raw))
+        except ValueError:
+            raise HTTPException(422, detail={"error": {"code": "INVALID_UUID", "value": raw}})
+
+    snapshots = await db.scalars(
+        select(InsightSnapshot).where(
+            InsightSnapshot.id.in_(parsed_ids),
+            InsightSnapshot.shop_id == shop.id,  # IDOR guard
+        )
+    )
+    snapshot_list = list(snapshots)
+
+    # Verify all requested IDs belong to this shop
+    found_ids = {s.id for s in snapshot_list}
+    missing = [str(i) for i in parsed_ids if i not in found_ids]
+    if missing:
+        raise HTTPException(
+            404,
+            detail={"error": {"code": "NOT_FOUND", "missing": missing}},
+        )
+
+    # Build period-keyed summaries from stored JSON
+    # Use period_end as the period label key
+    creator_summaries_by_period: dict[str, list] = {}
+    for snapshot in sorted(snapshot_list, key=lambda s: s.period_end):
+        period_key = str(snapshot.period_end)
+        creators = _safe_parse(CreatorSummaryItem, snapshot.top_creators_json or [])
+        creator_summaries_by_period[period_key] = creators
+
+    insights_list = analyze_creator_cohort(creator_summaries_by_period)
+
+    return [
+        {
+            "creator_id": i.creator_id,
+            "creator_name": i.creator_name,
+            "trend": i.trend,
+            "gmv_first_period": str(i.gmv_first_period),
+            "gmv_last_period": str(i.gmv_last_period),
+            "change_pct": str(i.change_pct),
+            "periods_active": i.periods_active,
+            "avg_orders_per_period": str(i.avg_orders_per_period),
+        }
+        for i in insights_list
+    ]
+
+
+# ── CM3 Endpoint ──────────────────────────────────────────────────────────────
+
+
+@router.get("/insights/{snapshot_id}/cm3")
+async def get_cm3(
+    snapshot_id: uuid.UUID,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Compute CM3 = CM2 - direct ads cost - product sample cost for livestream sessions in period."""
+    from app.models.livestream import LiveStreamSession
+    from app.services.rule_engine.pl_calculator import compute_cm3
+
+    snapshot = await db.scalar(
+        select(InsightSnapshot).where(
+            InsightSnapshot.id == snapshot_id,
+            InsightSnapshot.shop_id == shop.id,
+        )
+    )
+    if not snapshot:
+        raise HTTPException(
+            404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy snapshot."}},
+        )
+
+    # Load livestream sessions within the snapshot period
+    from sqlalchemy import and_
+
+    sessions = await db.scalars(
+        select(LiveStreamSession).where(
+            and_(
+                LiveStreamSession.shop_id == shop.id,
+                LiveStreamSession.livestream_date >= snapshot.period_start,
+                LiveStreamSession.livestream_date <= snapshot.period_end,
+            )
+        )
+    )
+    session_list = list(sessions)
+
+    livestream_costs = [
+        {
+            "ads_cost": s.ads_cost,
+            "product_sample_cost": s.product_sample_cost,
+        }
+        for s in session_list
+    ]
+
+    cm3, cm3_pct = compute_cm3(
+        cm2=snapshot.net_revenue,
+        gmv=snapshot.gmv_total,
+        livestream_costs=livestream_costs,
+    )
+
+    total_direct = sum(
+        Decimal(str(lc["ads_cost"])) + Decimal(str(lc["product_sample_cost"]))
+        for lc in livestream_costs
+    )
+
+    return {
+        "cm3": str(cm3),
+        "cm3_margin_pct": str(cm3_pct) if cm3_pct is not None else None,
+        "livestream_total_cost": str(total_direct),
+        "livestream_session_count": len(session_list),
+        "note_vi": (
+            "CM3 chưa tính phí quảng cáo TikTok Ads (chỉ tính chi phí host/studio/mẫu trong kỳ)"
+        ),
+    }

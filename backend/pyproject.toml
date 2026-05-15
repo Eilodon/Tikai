@@ -44,6 +44,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=2.19.0", # error tracking
     "slowapi>=0.1.9",              # LOW-3: rate limiting
     "sendgrid>=6.11.0",            # F-2-01: weekly digest email (was missing → feature silently broken)
+    "pywebpush>=2.0.0",            # Web Push notifications via VAPID protocol
 ]
 
 [project.optional-dependencies]

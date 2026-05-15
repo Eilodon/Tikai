@@ -8,8 +8,8 @@ P0-1 fix: ImportSession now stores top 5 SKUs by GMV after a successful import.
 Frontend reads this to pre-populate the post-import COGS entry prompt.
 Previously the prompt always received [] and the COGS step never showed data.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0009"
 down_revision = "0008"

@@ -1,6 +1,8 @@
 """Test BUG-NH2 fix: margin_pct uses GMV as denominator."""
-from decimal import Decimal
+
 from datetime import date
+from decimal import Decimal
+
 from app.services.parser.base import RawOrderRow
 from app.services.rule_engine.pl_calculator import calculate_sku_summaries
 
@@ -8,13 +10,19 @@ from app.services.rule_engine.pl_calculator import calculate_sku_summaries
 def _make_row(sku_id, gmv, fees=Decimal("0"), voucher=Decimal("0"), refund=Decimal("0"), qty=1):
     return RawOrderRow(
         tiktok_order_id=f"O{sku_id}",
-        sku_id=sku_id, sku_name=f"SKU {sku_id}",
-        gmv=gmv, platform_commission=fees, affiliate_commission=Decimal("0"),
-        voucher_cost=voucher, shipping_subsidy=Decimal("0"),
+        sku_id=sku_id,
+        sku_name=f"SKU {sku_id}",
+        gmv=gmv,
+        platform_commission=fees,
+        affiliate_commission=Decimal("0"),
+        voucher_cost=voucher,
+        shipping_subsidy=Decimal("0"),
         refund_amount=refund,
-        order_date=date(2026, 5, 9), status="completed",
+        order_date=date(2026, 5, 9),
+        status="completed",
         quantity=qty,
-        transaction_fee=Decimal("0"), order_processing_fee=Decimal("0"),
+        transaction_fee=Decimal("0"),
+        order_processing_fee=Decimal("0"),
     )
 
 
@@ -33,7 +41,9 @@ class TestMarginPctFix:
         # Voucher exceeds GMV → negative net_revenue
         # Old (buggy): margin/net_rev with both negative → POSITIVE (sign flip!)
         # New (fixed): margin/gmv → correctly negative
-        rows = [_make_row("LOSS", Decimal("100000"), voucher=Decimal("120000"), fees=Decimal("8000"))]
+        rows = [
+            _make_row("LOSS", Decimal("100000"), voucher=Decimal("120000"), fees=Decimal("8000"))
+        ]
         summaries = calculate_sku_summaries(rows, cogs_map={"LOSS": Decimal("30000")})
         s = summaries[0]
         # NetRev = 100k - 8k - 120k = -28k

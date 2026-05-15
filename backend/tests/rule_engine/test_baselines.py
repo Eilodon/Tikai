@@ -1,7 +1,8 @@
 """Test category refund baselines (FIX BUG-H5)."""
+
 from decimal import Decimal
+
 from app.services.rule_engine.baselines import (
-    CATEGORY_REFUND_BASELINES_BY_SLUG,
     DEFAULT_BASELINE,
     get_baseline_for_category,
 )

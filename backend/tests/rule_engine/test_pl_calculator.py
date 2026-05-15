@@ -5,14 +5,14 @@ Run: pytest tests/rule_engine/test_pl_calculator.py -v
 FIX P0-3 + P0-4: Updated to cover quantity-based COGS, new fee fields,
 and revenue_efficiency (renamed from roi).
 """
-import pytest
-from decimal import Decimal
+
 from datetime import date
+from decimal import Decimal
 
 from app.services.parser.base import RawOrderRow
 from app.services.rule_engine.pl_calculator import (
-    calculate_sku_summaries,
     calculate_creator_summaries,
+    calculate_sku_summaries,
 )
 
 
@@ -22,9 +22,9 @@ def make_row(**kwargs) -> RawOrderRow:
         sku_id="SKU-001",
         sku_name="Serum A",
         gmv=Decimal("100000"),
-        platform_commission=Decimal("12500"),   # 12.5% of 100000
-        transaction_fee=Decimal("6000"),         # 6% of 100000 (from 09/05/2026)
-        order_processing_fee=Decimal("3000"),    # 3,000 VND/order (from 27/10/2025)
+        platform_commission=Decimal("12500"),  # 12.5% of 100000
+        transaction_fee=Decimal("6000"),  # 6% of 100000 (from 09/05/2026)
+        order_processing_fee=Decimal("3000"),  # 3,000 VND/order (from 27/10/2025)
         affiliate_commission=Decimal("5000"),
         voucher_cost=Decimal("3000"),
         shipping_subsidy=Decimal("1000"),
@@ -105,10 +105,11 @@ class TestSKUSummaries:
     def test_net_revenue_includes_transaction_fee(self):
         """REGRESSION P0-3: transaction_fee must be deducted from net_revenue."""
         from app.services.rule_engine.fee_calculator import calculate_net_revenue
+
         row = make_row(
             gmv=Decimal("100000"),
             platform_commission=Decimal("12500"),
-            transaction_fee=Decimal("6000"),    # 6%
+            transaction_fee=Decimal("6000"),  # 6%
             order_processing_fee=Decimal("3000"),
             affiliate_commission=Decimal("0"),
             voucher_cost=Decimal("0"),
@@ -125,6 +126,7 @@ class TestSKUSummaries:
     def test_zero_fees_backward_compat(self):
         """Rows from old exports with zero transaction/processing fees still work."""
         from app.services.rule_engine.fee_calculator import calculate_net_revenue
+
         row = make_row(
             gmv=Decimal("100000"),
             platform_commission=Decimal("2000"),
@@ -169,10 +171,14 @@ class TestCreatorSummaries:
 
     def test_revenue_efficiency_attribute_exists(self):
         """REGRESSION P0-4: field renamed from roi to revenue_efficiency."""
-        rows = [make_row(
-            creator_id="CR-001", creator_name="Creator A",
-            gmv=Decimal("200000"), affiliate_commission=Decimal("10000"),
-        )]
+        rows = [
+            make_row(
+                creator_id="CR-001",
+                creator_name="Creator A",
+                gmv=Decimal("200000"),
+                affiliate_commission=Decimal("10000"),
+            )
+        ]
         summaries = calculate_creator_summaries(rows)
         assert hasattr(summaries[0], "revenue_efficiency"), (
             "revenue_efficiency attribute missing — was roi renamed correctly?"
@@ -188,7 +194,8 @@ class TestCreatorSummaries:
         Net revenue-based efficiency correctly reflects post-fee reality.
         """
         row = make_row(
-            creator_id="CR-001", creator_name="Creator A",
+            creator_id="CR-001",
+            creator_name="Creator A",
             gmv=Decimal("100000"),
             platform_commission=Decimal("12500"),
             transaction_fee=Decimal("6000"),
@@ -210,33 +217,37 @@ class TestCreatorSummaries:
 
     def test_high_commission_creator_flagged(self):
         """Creator whose commission exceeds net_revenue should have efficiency < 1."""
-        rows = [make_row(
-            creator_id="CR-BAD",
-            gmv=Decimal("100000"),
-            platform_commission=Decimal("12500"),
-            transaction_fee=Decimal("6000"),
-            order_processing_fee=Decimal("3000"),
-            affiliate_commission=Decimal("90000"),
-            voucher_cost=Decimal("0"),
-            shipping_subsidy=Decimal("0"),
-            refund_amount=Decimal("0"),
-        )]
+        rows = [
+            make_row(
+                creator_id="CR-BAD",
+                gmv=Decimal("100000"),
+                platform_commission=Decimal("12500"),
+                transaction_fee=Decimal("6000"),
+                order_processing_fee=Decimal("3000"),
+                affiliate_commission=Decimal("90000"),
+                voucher_cost=Decimal("0"),
+                shipping_subsidy=Decimal("0"),
+                refund_amount=Decimal("0"),
+            )
+        ]
         summaries = calculate_creator_summaries(rows)
         assert summaries[0].revenue_efficiency < Decimal("0")
 
     def test_efficient_creator_above_one(self):
         """Creator generating 5x net_revenue vs commission → efficiency ~5."""
-        rows = [make_row(
-            creator_id="CR-GOOD",
-            gmv=Decimal("500000"),
-            platform_commission=Decimal("62500"),
-            transaction_fee=Decimal("30000"),
-            order_processing_fee=Decimal("3000"),
-            affiliate_commission=Decimal("10000"),
-            voucher_cost=Decimal("0"),
-            shipping_subsidy=Decimal("0"),
-            refund_amount=Decimal("0"),
-        )]
+        rows = [
+            make_row(
+                creator_id="CR-GOOD",
+                gmv=Decimal("500000"),
+                platform_commission=Decimal("62500"),
+                transaction_fee=Decimal("30000"),
+                order_processing_fee=Decimal("3000"),
+                affiliate_commission=Decimal("10000"),
+                voucher_cost=Decimal("0"),
+                shipping_subsidy=Decimal("0"),
+                refund_amount=Decimal("0"),
+            )
+        ]
         summaries = calculate_creator_summaries(rows)
         # net_revenue = 500000 - 62500 - 30000 - 3000 - 10000 = 394500
         # efficiency = 394500 / 10000 = 39.45
@@ -244,18 +255,25 @@ class TestCreatorSummaries:
 
     def test_efficiency_none_when_zero_commission(self):
         """Organic orders (no affiliate commission) → revenue_efficiency = None."""
-        rows = [make_row(
-            creator_id="CR-ORGANIC",
-            affiliate_commission=Decimal("0"),
-        )]
+        rows = [
+            make_row(
+                creator_id="CR-ORGANIC",
+                affiliate_commission=Decimal("0"),
+            )
+        ]
         summaries = calculate_creator_summaries(rows)
         assert summaries[0].revenue_efficiency is None
 
     def test_rows_without_creator_id_excluded(self):
         rows = [
             make_row(creator_id=None),
-            make_row(tiktok_order_id="O2", creator_id="CR-001", creator_name="A",
-                     gmv=Decimal("100000"), affiliate_commission=Decimal("5000")),
+            make_row(
+                tiktok_order_id="O2",
+                creator_id="CR-001",
+                creator_name="A",
+                gmv=Decimal("100000"),
+                affiliate_commission=Decimal("5000"),
+            ),
         ]
         summaries = calculate_creator_summaries(rows)
         assert len(summaries) == 1
@@ -274,13 +292,13 @@ class TestCreatorSummaries:
             creator_id="CR-BAD",
             creator_name="Bad Creator",
             attributed_gmv=Decimal("100000"),
-            attributed_net_revenue=Decimal("5000"),   # net_rev < commission
+            attributed_net_revenue=Decimal("5000"),  # net_rev < commission
             total_commission=Decimal("80000"),
             order_count=10,
             revenue_efficiency=Decimal("5000") / Decimal("80000"),  # ~0.0625 < 1
         )
         leaks = detect_top_leaks([], [bad_creator], category_baselines={})
-        creator_leaks = [l for l in leaks if l.type == "creator"]
+        creator_leaks = [leak for leak in leaks if leak.type == "creator"]
         assert len(creator_leaks) == 1, (
             "Creator with revenue_efficiency < 1.0 should be flagged as a leak. "
             "Check leak_detector condition — did it still use old roi formula?"

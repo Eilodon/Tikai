@@ -19,11 +19,10 @@ class AIAction(Base, TimestampMixin):
     - source_insight_json = snapshot of InsightSnapshot input used (audit trail)
     - actual_impact_json populated AFTER seller completes action + Rule Engine recalculates
     """
+
     __tablename__ = "ai_actions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     shop_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False
     )
@@ -55,9 +54,7 @@ class AIAction(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(20), default="pending", nullable=False
     )  # pending | done | dismissed
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Impact verification — populated 7 days after completion
     actual_impact_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -68,6 +65,4 @@ class AIAction(Base, TimestampMixin):
     shop: Mapped[Shop] = relationship(back_populates="ai_actions")  # noqa: F821
     insight_snapshot: Mapped[InsightSnapshot] = relationship(back_populates="ai_actions")  # noqa: F821
 
-    __table_args__ = (
-        Index("ix_ai_actions_shop_id_status", "shop_id", "status"),
-    )
+    __table_args__ = (Index("ix_ai_actions_shop_id_status", "shop_id", "status"),)

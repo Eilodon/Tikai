@@ -5,16 +5,18 @@ Run: pytest tests/ai/ -v
 NOTE: these tests call live AI API — run separately from unit tests.
 Use pytest mark: pytest tests/ai/ -m ai_eval
 """
+
 import json
-import pytest
-from pathlib import Path
 from decimal import Decimal
+from pathlib import Path
+
+import pytest
 
 from app.services.ai.guardrails import (
-    validate_numbers_in_text,
     detect_injection,
-    sanitize_for_ai,
     flatten_numerics,
+    sanitize_for_ai,
+    validate_numbers_in_text,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -25,6 +27,7 @@ def load_fixture(name: str) -> dict:
 
 
 # ── Guardrail Unit Tests (no AI call needed) ──────────────────────────────────
+
 
 class TestValidateNumbersInText:
     def test_number_in_source_is_valid(self):
@@ -48,9 +51,7 @@ class TestValidateNumbersInText:
         assert result.valid
 
     def test_nested_source_json(self):
-        source = {
-            "top_leaks": [{"estimated_loss": "5800000"}]
-        }
+        source = {"top_leaks": [{"estimated_loss": "5800000"}]}
         text = "Serum A gây mất ~5.800.000₫"
         result = validate_numbers_in_text(text, source)
         assert result.valid
@@ -75,6 +76,7 @@ class TestValidateNumbersInText:
         """REGRESSION BUG-CRITICAL-1: extract_numbers_from_text must not produce
         overlapping substrings like ['186.000.000', '186.000', '000']."""
         from app.services.ai.guardrails import extract_numbers_from_text
+
         nums = extract_numbers_from_text("186.000.000₫")
         # Must contain the full number, NOT the partial substring
         assert "186.000.000" in nums
@@ -153,6 +155,7 @@ class TestFlattenNumerics:
 
 # ── Fixture-based AI Eval Tests (require AI API key) ─────────────────────────
 
+
 @pytest.mark.ai_eval
 class TestAhaNarratorEvals:
     """These tests require ANTHROPIC_API_KEY and make real API calls."""
@@ -160,8 +163,8 @@ class TestAhaNarratorEvals:
     @pytest.mark.asyncio
     async def test_missing_cogs_no_profit_claim(self):
         """AI must not claim profit when COGS is missing."""
+        from app.schemas.ai_service import AhaNarrativeInput
         from app.services.ai.functions import run_aha_narrator
-        from app.schemas.ai_service import AhaNarrativeInput, LeakItem
 
         input_data = AhaNarrativeInput(
             shop_name="Test Shop",
@@ -181,9 +184,9 @@ class TestAhaNarratorEvals:
     @pytest.mark.asyncio
     async def test_numbers_match_source(self):
         """All numbers in narrative must trace back to source JSON."""
-        from app.services.ai.functions import run_aha_narrator
         from app.schemas.ai_service import AhaNarrativeInput
         from app.schemas.insight import LeakItem
+        from app.services.ai.functions import run_aha_narrator
 
         input_data = AhaNarrativeInput(
             shop_name="Test Shop",
@@ -192,9 +195,13 @@ class TestAhaNarratorEvals:
             net_revenue=Decimal("122000000"),
             top_leaks=[
                 LeakItem(
-                    type="sku", id="SKU-001", name="Serum A",
+                    type="sku",
+                    id="SKU-001",
+                    name="Serum A",
                     estimated_loss=Decimal("5800000"),
-                    reason="voucher_high", confidence="high", can_act_now=True,
+                    reason="voucher_high",
+                    confidence="high",
+                    can_act_now=True,
                 )
             ],
             is_net_revenue_mode=False,
@@ -210,9 +217,9 @@ class TestAhaNarratorEvals:
     @pytest.mark.asyncio
     async def test_injection_in_sku_name_ignored(self):
         """Prompt injection in SKU name must not affect output structure."""
-        from app.services.ai.functions import run_aha_narrator
         from app.schemas.ai_service import AhaNarrativeInput
         from app.schemas.insight import LeakItem
+        from app.services.ai.functions import run_aha_narrator
 
         input_data = AhaNarrativeInput(
             shop_name="Test Shop",

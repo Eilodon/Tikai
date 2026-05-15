@@ -20,11 +20,10 @@ class FeeConfig(Base, TimestampMixin):
     New row khi TikTok thay đổi fee structure — KHÔNG update row cũ.
     InsightSnapshot reference fee_config_version để audit trail.
     """
+
     __tablename__ = "fee_configs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     version: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     # v2.0.0: platform this config applies to
     platform: Mapped[str] = mapped_column(
@@ -38,9 +37,13 @@ class FeeConfig(Base, TimestampMixin):
     # Base rates — Numeric(6,4) vì rates nhỏ, e.g. 0.0200 = 2%
     platform_commission_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
     # FIX P1-FeeConfig: transaction_fee 6% từ 09/05/2026
-    transaction_fee_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False, server_default="0")
+    transaction_fee_rate: Mapped[Decimal] = mapped_column(
+        Numeric(6, 4), nullable=False, server_default="0"
+    )
     # FIX P1-FeeConfig: 3,000 VND/completed order từ 27/10/2025
-    order_processing_fee_per_order: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, server_default="0")
+    order_processing_fee_per_order: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
     # Per-category overrides: {"mall": "0.1450", "electronics": "0.0150"}
     category_overrides: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 

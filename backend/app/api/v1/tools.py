@@ -2,6 +2,7 @@
 Tools API — calculator utilities: Price Recommender + What-If Simulator + Campaign Pre-Check.
 INVARIANT: pure computation endpoints — no DB writes, no AI calls.
 """
+
 import uuid
 from decimal import Decimal
 from typing import Annotated
@@ -19,7 +20,7 @@ from app.models.fee_config import FeeConfig
 from app.models.insight_snapshot import InsightSnapshot
 from app.models.shop import Shop
 from app.schemas.insight import SKUSummaryItem
-from app.services.rule_engine.fee_calculator import FeeConfigData, safe_divide
+from app.services.rule_engine.fee_calculator import FeeConfigData
 from app.services.rule_engine.price_recommender import recommend_price
 from app.services.rule_engine.simulator import SimulatorParams, simulate_sku
 
@@ -37,9 +38,7 @@ def _safe_parse_tools(schema_class, items: list) -> list:
     return result
 
 
-async def _get_latest_fee_config_data(
-    db: AsyncSession, platform: str = "tiktok"
-) -> FeeConfigData:
+async def _get_latest_fee_config_data(db: AsyncSession, platform: str = "tiktok") -> FeeConfigData:
     config = await db.scalar(
         select(FeeConfig)
         .where(FeeConfig.platform == platform)
@@ -49,7 +48,9 @@ async def _get_latest_fee_config_data(
     if not config:
         raise HTTPException(
             422,
-            detail={"error": {"code": "FEE_CONFIG_MISSING", "message": "Không tìm thấy cấu hình phí."}},
+            detail={
+                "error": {"code": "FEE_CONFIG_MISSING", "message": "Không tìm thấy cấu hình phí."}
+            },
         )
     return FeeConfigData(
         version=config.version,
@@ -61,9 +62,10 @@ async def _get_latest_fee_config_data(
 
 # ── Price Recommender ─────────────────────────────────────────────────────────
 
+
 class PriceRecommendRequest(BaseModel):
     cogs_per_unit: Decimal
-    target_margin_pct: Decimal   # 0.05 → 0.50
+    target_margin_pct: Decimal  # 0.05 → 0.50
     affiliate_rate: Decimal = Decimal("0.10")
     voucher_rate: Decimal = Decimal("0.05")
 
@@ -116,6 +118,7 @@ async def price_recommend(
 
 # ── Fee Schedule (public, no auth) ───────────────────────────────────────────
 
+
 @router.get("/tools/fee-schedule/public")
 @limiter.limit("30/minute")
 async def get_fee_schedule_public(
@@ -133,6 +136,7 @@ async def get_fee_schedule_public(
 
 
 # ── Price Recommender (public, no auth, rate-limited by IP) ──────────────────
+
 
 @router.post("/tools/price-recommend/public")
 @limiter.limit("30/hour")
@@ -169,6 +173,7 @@ async def price_recommend_public(
 
 
 # ── What-If Simulator ─────────────────────────────────────────────────────────
+
 
 class SimulateRequest(BaseModel):
     snapshot_id: uuid.UUID
@@ -211,11 +216,7 @@ async def simulate(
         )
 
     raw_cogs = shop.cogs_map or {}
-    cogs_per_unit = (
-        Decimal(str(raw_cogs[body.sku_id]))
-        if body.sku_id in raw_cogs
-        else None
-    )
+    cogs_per_unit = Decimal(str(raw_cogs[body.sku_id])) if body.sku_id in raw_cogs else None
 
     fee_config = await _get_latest_fee_config_data(db)
     params = SimulatorParams(
@@ -228,10 +229,16 @@ async def simulate(
     return {
         "current_net_revenue": str(result.current_net_revenue),
         "current_margin": str(result.current_margin) if result.current_margin is not None else None,
-        "current_margin_pct": str(result.current_margin_pct) if result.current_margin_pct is not None else None,
+        "current_margin_pct": str(result.current_margin_pct)
+        if result.current_margin_pct is not None
+        else None,
         "simulated_net_revenue": str(result.simulated_net_revenue),
-        "simulated_margin": str(result.simulated_margin) if result.simulated_margin is not None else None,
-        "simulated_margin_pct": str(result.simulated_margin_pct) if result.simulated_margin_pct is not None else None,
+        "simulated_margin": str(result.simulated_margin)
+        if result.simulated_margin is not None
+        else None,
+        "simulated_margin_pct": str(result.simulated_margin_pct)
+        if result.simulated_margin_pct is not None
+        else None,
         "net_revenue_delta": str(result.net_revenue_delta),
         "margin_delta": str(result.margin_delta) if result.margin_delta is not None else None,
         "breakeven_extra_orders": result.breakeven_extra_orders,
@@ -240,6 +247,7 @@ async def simulate(
 
 
 # ── Campaign Pre-Check (multi-SKU) ───────────────────────────────────────────
+
 
 class CampaignSKUInput(BaseModel):
     sku_id: str
@@ -306,9 +314,7 @@ async def simulate_campaign(
                 },
             )
 
-        cogs_per_unit = (
-            Decimal(str(raw_cogs[entry.sku_id])) if entry.sku_id in raw_cogs else None
-        )
+        cogs_per_unit = Decimal(str(raw_cogs[entry.sku_id])) if entry.sku_id in raw_cogs else None
 
         # Scale snapshot metrics to planned_units
         snapshot_units = max(sku.total_quantity, 1)
@@ -338,18 +344,26 @@ async def simulate_campaign(
         else:
             has_margin = False
 
-        sku_results.append({
-            "sku_id": entry.sku_id,
-            "sku_name": sku.sku_name,
-            "planned_units": entry.planned_units,
-            "current_net_revenue": str(result.current_net_revenue),
-            "simulated_net_revenue": str(result.simulated_net_revenue),
-            "net_revenue_delta": str(result.net_revenue_delta),
-            "current_margin": str(result.current_margin) if result.current_margin is not None else None,
-            "simulated_margin": str(result.simulated_margin) if result.simulated_margin is not None else None,
-            "simulated_margin_pct": str(result.simulated_margin_pct) if result.simulated_margin_pct is not None else None,
-            "verdict": result.verdict,
-        })
+        sku_results.append(
+            {
+                "sku_id": entry.sku_id,
+                "sku_name": sku.sku_name,
+                "planned_units": entry.planned_units,
+                "current_net_revenue": str(result.current_net_revenue),
+                "simulated_net_revenue": str(result.simulated_net_revenue),
+                "net_revenue_delta": str(result.net_revenue_delta),
+                "current_margin": str(result.current_margin)
+                if result.current_margin is not None
+                else None,
+                "simulated_margin": str(result.simulated_margin)
+                if result.simulated_margin is not None
+                else None,
+                "simulated_margin_pct": str(result.simulated_margin_pct)
+                if result.simulated_margin_pct is not None
+                else None,
+                "verdict": result.verdict,
+            }
+        )
 
     portfolio_margin_delta = (total_simulated_margin - total_current_margin) if has_margin else None
     log.info(
@@ -368,6 +382,8 @@ async def simulate_campaign(
             "total_net_revenue_delta": str(total_simulated_nr - total_current_nr),
             "total_current_margin": str(total_current_margin) if has_margin else None,
             "total_simulated_margin": str(total_simulated_margin) if has_margin else None,
-            "total_margin_delta": str(portfolio_margin_delta) if portfolio_margin_delta is not None else None,
+            "total_margin_delta": str(portfolio_margin_delta)
+            if portfolio_margin_delta is not None
+            else None,
         },
     }

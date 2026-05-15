@@ -4,17 +4,18 @@ FIX QUAL-05: uses ORM-style update via mapped column, not raw text() SQL.
 v1.0.0: Rate limiting on POST + result cap on GET (was unbounded for shops with 1000+ SKUs).
 v2.1.0: POST /cogs/bulk-import accepts CSV upload.
 """
+
 import csv
 import io
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import structlog
 from app.core.auth import get_current_shop
 from app.core.database import get_db
 from app.core.rate_limit import limiter
@@ -49,7 +50,7 @@ class COGSItemResponse(BaseModel):
 class COGSBatchResponse(BaseModel):
     updated: int
     items: list[COGSItemResponse]
-    total_skus: int = 0   # v1.0.0: inform frontend if results were capped
+    total_skus: int = 0  # v1.0.0: inform frontend if results were capped
 
 
 @router.get("/cogs")
@@ -83,7 +84,7 @@ async def get_cogs(
 
 
 @router.post("/cogs")
-@limiter.limit("30/hour")   # v1.0.0: prevent repeated JSONB writes on shop record
+@limiter.limit("30/hour")  # v1.0.0: prevent repeated JSONB writes on shop record
 async def upsert_cogs(
     request: Request,
     body: COGSBatchRequest,
@@ -99,6 +100,7 @@ async def upsert_cogs(
 
     shop.cogs_map = current
     from sqlalchemy.orm.attributes import flag_modified
+
     flag_modified(shop, "cogs_map")
     await db.flush()
 
@@ -117,6 +119,7 @@ async def upsert_cogs(
 
 
 # ── Bulk CSV Import ───────────────────────────────────────────────────────────
+
 
 class COGSBulkImportResponse(BaseModel):
     updated: int
@@ -196,7 +199,9 @@ async def bulk_import_cogs(
             if cogs_val <= 0:
                 raise ValueError("must be positive")
         except (InvalidOperation, ValueError):
-            errors.append(f"Dòng {i}: SKU '{sku_id}' — giá trị '{raw_cogs}' không hợp lệ (cần số dương).")
+            errors.append(
+                f"Dòng {i}: SKU '{sku_id}' — giá trị '{raw_cogs}' không hợp lệ (cần số dương)."
+            )
             skipped += 1
             continue
 
@@ -206,9 +211,16 @@ async def bulk_import_cogs(
     if updated > 0:
         shop.cogs_map = current
         from sqlalchemy.orm.attributes import flag_modified
+
         flag_modified(shop, "cogs_map")
         await db.flush()
         await db.commit()
 
-    log.info("cogs.bulk_import", shop_id=str(shop.id), updated=updated, skipped=skipped, errors=len(errors))
+    log.info(
+        "cogs.bulk_import",
+        shop_id=str(shop.id),
+        updated=updated,
+        skipped=skipped,
+        errors=len(errors),
+    )
     return COGSBulkImportResponse(updated=updated, skipped=skipped, errors=errors)

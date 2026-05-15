@@ -11,6 +11,7 @@ All 9 fixes verified:
   8. GET /cogs has .limit(MAX_COGS_SKUS) — not unbounded
   9. list_receipts uses Query(le=52) — validated cap, not uncapped default
 """
+
 import inspect
 from decimal import Decimal
 
@@ -19,8 +20,10 @@ class TestFeeConfigDataNewFields:
     """FIX v1.0.0: FeeConfigData now includes transaction_fee_rate + order_processing_fee_per_order."""
 
     def test_feedata_has_transaction_fee_rate(self):
-        from app.services.rule_engine.fee_calculator import FeeConfigData
         import dataclasses
+
+        from app.services.rule_engine.fee_calculator import FeeConfigData
+
         fields = {f.name for f in dataclasses.fields(FeeConfigData)}
         assert "transaction_fee_rate" in fields, (
             "FeeConfigData missing transaction_fee_rate — "
@@ -29,8 +32,10 @@ class TestFeeConfigDataNewFields:
         )
 
     def test_feedata_has_order_processing_fee(self):
-        from app.services.rule_engine.fee_calculator import FeeConfigData
         import dataclasses
+
+        from app.services.rule_engine.fee_calculator import FeeConfigData
+
         fields = {f.name for f in dataclasses.fields(FeeConfigData)}
         assert "order_processing_fee_per_order" in fields, (
             "FeeConfigData missing order_processing_fee_per_order"
@@ -39,6 +44,7 @@ class TestFeeConfigDataNewFields:
     def test_feedata_defaults_zero_for_new_fields(self):
         """Backwards compat: callers that don't pass new fields still work."""
         from app.services.rule_engine.fee_calculator import FeeConfigData
+
         config = FeeConfigData(
             version="test",
             platform_commission_rate=Decimal("0.125"),
@@ -50,9 +56,13 @@ class TestFeeConfigDataNewFields:
 class TestApplyFeeConfigEstimation:
     """FIX v1.0.0: apply_fee_config estimates missing transaction/processing fees."""
 
-    def _make_row(self, status="completed", transaction_fee=Decimal("0"), order_processing_fee=Decimal("0")):
-        from app.services.parser.base import RawOrderRow
+    def _make_row(
+        self, status="completed", transaction_fee=Decimal("0"), order_processing_fee=Decimal("0")
+    ):
         from datetime import date
+
+        from app.services.parser.base import RawOrderRow
+
         return RawOrderRow(
             tiktok_order_id="ORD-001",
             sku_id="SKU-001",
@@ -71,6 +81,7 @@ class TestApplyFeeConfigEstimation:
 
     def _make_config(self, transaction_rate="0.06", processing_fee="3000"):
         from app.services.rule_engine.fee_calculator import FeeConfigData
+
         return FeeConfigData(
             version="2026-VN-v3",
             platform_commission_rate=Decimal("0.125"),
@@ -80,6 +91,7 @@ class TestApplyFeeConfigEstimation:
 
     def test_estimates_transaction_fee_when_zero_in_row(self):
         from app.services.rule_engine.fee_calculator import apply_fee_config
+
         row = self._make_row(transaction_fee=Decimal("0"))
         config = self._make_config(transaction_rate="0.06")
         updated, notes = apply_fee_config([row], config)
@@ -92,6 +104,7 @@ class TestApplyFeeConfigEstimation:
 
     def test_does_not_overwrite_existing_transaction_fee(self):
         from app.services.rule_engine.fee_calculator import apply_fee_config
+
         row = self._make_row(transaction_fee=Decimal("5500"))  # already set
         config = self._make_config(transaction_rate="0.06")
         updated, notes = apply_fee_config([row], config)
@@ -102,6 +115,7 @@ class TestApplyFeeConfigEstimation:
 
     def test_estimates_order_processing_fee_for_completed_order(self):
         from app.services.rule_engine.fee_calculator import apply_fee_config
+
         row = self._make_row(status="completed", order_processing_fee=Decimal("0"))
         config = self._make_config(processing_fee="3000")
         updated, notes = apply_fee_config([row], config)
@@ -111,6 +125,7 @@ class TestApplyFeeConfigEstimation:
 
     def test_does_not_estimate_order_processing_fee_for_refunded(self):
         from app.services.rule_engine.fee_calculator import apply_fee_config
+
         row = self._make_row(status="refunded", order_processing_fee=Decimal("0"))
         config = self._make_config(processing_fee="3000")
         updated, notes = apply_fee_config([row], config)
@@ -121,6 +136,7 @@ class TestApplyFeeConfigEstimation:
     def test_no_estimation_when_config_rate_zero(self):
         """If fee_config has no transaction_fee_rate (e.g. old config), don't estimate."""
         from app.services.rule_engine.fee_calculator import apply_fee_config
+
         row = self._make_row(transaction_fee=Decimal("0"))
         config = self._make_config(transaction_rate="0")  # old config, no rate
         updated, notes = apply_fee_config([row], config)
@@ -133,8 +149,8 @@ class TestProcessImportTopLevelImports:
     """FIX v1.0.0: get_ai_calls_limit imported at module level (was lazy import inside function)."""
 
     def test_get_ai_calls_limit_at_module_level(self):
-        import inspect
         from app.tasks import process_import as pm_module
+
         source = inspect.getsource(pm_module)
         # Should be at module level (before any function definition)
         import_idx = source.find("from app.core.gates import get_ai_calls_limit")
@@ -150,8 +166,8 @@ class TestWorkerNoDoubleImport:
     """FIX v1.0.0: worker.py had duplicate 'from datetime import...' inside the loop body."""
 
     def test_no_duplicate_datetime_import_in_loop(self):
-        import inspect
         from app.tasks import worker
+
         source = inspect.getsource(worker.run_weekly_receipts)
         import_count = source.count("from datetime import")
         assert import_count == 0, (
@@ -165,8 +181,8 @@ class TestAIClientRetryBackoff:
     """FIX v1.0.0: AI client has asyncio.sleep between retries (was immediate retry)."""
 
     def test_call_ai_has_backoff_sleep(self):
-        import inspect
         from app.services.ai import client as ai_client
+
         source = inspect.getsource(ai_client.call_ai)
         assert "asyncio.sleep" in source, (
             "call_ai is missing asyncio.sleep between retries. "
@@ -179,8 +195,8 @@ class TestAIClientRetryBackoff:
 
     def test_backoff_only_between_retries_not_before_first(self):
         """Backoff before attempt 0 (first call) would add unnecessary latency."""
-        import inspect
         from app.services.ai import client as ai_client
+
         source = inspect.getsource(ai_client.call_ai)
         # The sleep should be conditional on attempt > 0
         assert "attempt > 0" in source or "if attempt" in source, (
@@ -192,8 +208,8 @@ class TestCOGSGetLimit:
     """FIX v1.0.0: GET /cogs is now capped at 500 SKUs (was unbounded)."""
 
     def test_cogs_get_has_limit(self):
-        import inspect
         from app.api.v1 import cogs
+
         source = inspect.getsource(cogs.get_cogs)
         assert ".limit(" in source, (
             "GET /cogs query has no .limit() — unbounded query could return 1000+ SKUs "
@@ -202,15 +218,12 @@ class TestCOGSGetLimit:
         assert "MAX_COGS_SKUS" in source
 
     def test_cogs_post_has_rate_limit(self):
-        import inspect
         from app.api.v1 import cogs
-        source = inspect.getsource(cogs.upsert_cogs)
+
         # Rate limit decorator appears before function body
-        upsert_def_idx = source.find("async def upsert_cogs")
-        preceding = source[max(0, upsert_def_idx - 200):upsert_def_idx]
         full_source = inspect.getsource(cogs)
         upsert_idx = full_source.find("async def upsert_cogs")
-        pre = full_source[max(0, upsert_idx - 200):upsert_idx]
+        pre = full_source[max(0, upsert_idx - 200) : upsert_idx]
         assert "@limiter.limit(" in pre, (
             "POST /cogs missing @limiter.limit() — repeated COGS writes can cause "
             "excessive JSONB updates on the shops table. v1.0.0 fix: 30/hour rate limit."
@@ -221,8 +234,8 @@ class TestWeeklyReceiptsListCap:
     """FIX v1.0.0: list_receipts limit is now validated (ge=1, le=52)."""
 
     def test_list_receipts_has_validated_limit(self):
-        import inspect
         from app.api.v1 import weekly_receipts
+
         source = inspect.getsource(weekly_receipts.list_receipts)
         assert "le=" in source or "le=MAX_RECEIPTS" in source or "Query" in source, (
             "list_receipts has no validated limit — user could pass limit=10000 and load all receipts"
@@ -238,6 +251,7 @@ class TestVersionString:
 
     def test_app_version_is_current(self):
         from app.main import APP_VERSION
+
         assert APP_VERSION == "2.0.2", (
             f"APP_VERSION must be '2.0.2' (current release). Got {APP_VERSION!r}. "
             "Bump APP_VERSION in main.py on every release."

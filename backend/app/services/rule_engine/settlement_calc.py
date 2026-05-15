@@ -2,6 +2,7 @@
 Settlement Calculator — cash-in-14d forecast.
 INVARIANT: deterministic, Decimal-only. No AI, no network calls.
 """
+
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -11,10 +12,10 @@ from app.services.parser.base import RawOrderRow
 
 @dataclass
 class SettlementForecast:
-    cash_in_14d: Decimal        # expected settlement within next 14 days
-    cash_in_30d: Decimal        # expected settlement within next 30 days
-    pending_total: Decimal      # total unsettled amount
-    settled_total: Decimal      # already settled
+    cash_in_14d: Decimal  # expected settlement within next 14 days
+    cash_in_30d: Decimal  # expected settlement within next 30 days
+    pending_total: Decimal  # total unsettled amount
+    settled_total: Decimal  # already settled
 
 
 # TikTok VN typical settlement window: 14-16 days after order completion

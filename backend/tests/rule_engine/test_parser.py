@@ -2,11 +2,11 @@
 Tests for parser normalizer.
 Run: pytest tests/rule_engine/test_parser.py -v
 """
-import pytest
+
 from decimal import Decimal
 
-from app.services.parser.normalizer import parse_money, parse_date, build_column_map, mask_pii
 from app.services.parser.detector import detect_file_type
+from app.services.parser.normalizer import build_column_map, mask_pii, parse_date, parse_money
 
 
 class TestParseMoney:
@@ -38,7 +38,7 @@ class TestParseMoney:
         assert parse_money("-") == Decimal("0")
 
     def test_nan_float_returns_zero(self):
-        import math
+
         result = parse_money(float("nan"))
         assert result == Decimal("0")
 
@@ -61,16 +61,19 @@ class TestParseMoney:
 class TestParseDate:
     def test_iso_format(self):
         from datetime import date
+
         result = parse_date("2026-05-01")
         assert result == date(2026, 5, 1)
 
     def test_iso_datetime_format(self):
         from datetime import date
+
         result = parse_date("2026-05-01 14:30:00")
         assert result == date(2026, 5, 1)
 
     def test_vietnamese_format(self):
         from datetime import date
+
         result = parse_date("01/05/2026")
         assert result == date(2026, 5, 1)
 
@@ -87,8 +90,14 @@ class TestParseDate:
 
 class TestDetectFileType:
     def test_order_export_english(self):
-        headers = ["Order ID", "Product Name", "SKU ID", "Original Price",
-                   "Order Status", "Order Creation Time"]
+        headers = [
+            "Order ID",
+            "Product Name",
+            "SKU ID",
+            "Original Price",
+            "Order Status",
+            "Order Creation Time",
+        ]
         # FIX v2.0.1: detect_file_type returns 3-tuple since v2.0.0 (added platform).
         # Old 2-tuple unpack raised: ValueError: too many values to unpack (expected 2)
         file_type, score, platform = detect_file_type(headers)
@@ -97,8 +106,14 @@ class TestDetectFileType:
         assert platform == "tiktok"
 
     def test_order_export_vietnamese(self):
-        headers = ["Mã đơn hàng", "Tên sản phẩm", "Mã SKU",
-                   "Giá gốc", "Trạng thái đơn", "Ngày tạo đơn"]
+        headers = [
+            "Mã đơn hàng",
+            "Tên sản phẩm",
+            "Mã SKU",
+            "Giá gốc",
+            "Trạng thái đơn",
+            "Ngày tạo đơn",
+        ]
         file_type, score, platform = detect_file_type(headers)
         assert file_type == "order_export"
         assert platform == "tiktok"
@@ -110,8 +125,7 @@ class TestDetectFileType:
         assert platform == "unknown"
 
     def test_transaction_export_detected(self):
-        headers = ["Transaction ID", "Transaction Type",
-                   "Settlement Amount", "Transaction Date"]
+        headers = ["Transaction ID", "Transaction Type", "Settlement Amount", "Transaction Date"]
         file_type, score, platform = detect_file_type(headers)
         assert file_type == "transaction_export"
         assert platform == "tiktok"
@@ -119,7 +133,13 @@ class TestDetectFileType:
 
 class TestBuildColumnMap:
     def test_maps_english_columns(self):
-        headers = ["Order ID", "Product Name", "Original Price", "Order Status", "Order Creation Time"]
+        headers = [
+            "Order ID",
+            "Product Name",
+            "Original Price",
+            "Order Status",
+            "Order Creation Time",
+        ]
         col_map = build_column_map(headers)
         assert "tiktok_order_id" in col_map
         assert col_map["tiktok_order_id"] == "Order ID"

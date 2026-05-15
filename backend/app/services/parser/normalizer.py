@@ -2,6 +2,7 @@
 Parser normalizer — column mapping, money parsing, date parsing, PII masking.
 v2.0.0: Added SHOPEE_COLUMN_ALIASES + platform-aware build_column_map().
 """
+
 import copy
 import re
 from datetime import date
@@ -11,67 +12,118 @@ from typing import Any
 # ── TikTok column aliases ──────────────────────────────────────────────────────
 COLUMN_ALIASES: dict[str, list[str]] = {
     "tiktok_order_id": [
-        "Order ID", "Order No.", "Mã đơn hàng", "order id",
+        "Order ID",
+        "Order No.",
+        "Mã đơn hàng",
+        "order id",
     ],
     "sku_id": [
-        "SKU ID", "Product ID", "Seller SKU", "Mã SKU",
+        "SKU ID",
+        "Product ID",
+        "Seller SKU",
+        "Mã SKU",
     ],
     "sku_name": [
-        "Product Name", "Item Name", "SKU Name", "Tên sản phẩm", "Tên SKU",
+        "Product Name",
+        "Item Name",
+        "SKU Name",
+        "Tên sản phẩm",
+        "Tên SKU",
     ],
     "gmv": [
-        "Original Price", "Buyer Paid", "GMV",
-        "Paid Price", "Giá thanh toán", "Số tiền người mua trả",
+        "Original Price",
+        "Buyer Paid",
+        "GMV",
+        "Paid Price",
+        "Giá thanh toán",
+        "Số tiền người mua trả",
     ],
     "platform_commission": [
-        "Platform Commission Fee", "Commission Fee", "Phí hoa hồng nền tảng",
-        "TikTok Commission", "Phí hoa hồng TikTok",
+        "Platform Commission Fee",
+        "Commission Fee",
+        "Phí hoa hồng nền tảng",
+        "TikTok Commission",
+        "Phí hoa hồng TikTok",
     ],
     "affiliate_commission": [
-        "Affiliate Commission", "Creator Commission", "Affiliate Partner Commission",
-        "Hoa hồng affiliate", "Hoa hồng creator",
+        "Affiliate Commission",
+        "Creator Commission",
+        "Affiliate Partner Commission",
+        "Hoa hồng affiliate",
+        "Hoa hồng creator",
     ],
     "voucher_cost": [
-        "Seller Discount", "Seller Voucher", "Seller Promo",
-        "Voucher từ người bán", "Giảm giá từ người bán",
+        "Seller Discount",
+        "Seller Voucher",
+        "Seller Promo",
+        "Voucher từ người bán",
+        "Giảm giá từ người bán",
     ],
     "shipping_subsidy": [
-        "Shipping Fee Subsidy", "Shipping Subsidy", "Phí vận chuyển hỗ trợ",
+        "Shipping Fee Subsidy",
+        "Shipping Subsidy",
+        "Phí vận chuyển hỗ trợ",
         "Seller Shipping Fee",
     ],
     "refund_amount": [
-        "Refund Amount", "Returned Amount", "Refund", "Số tiền hoàn",
+        "Refund Amount",
+        "Returned Amount",
+        "Refund",
+        "Số tiền hoàn",
         "Số tiền hoàn trả",
     ],
     "order_date": [
-        "Order Creation Time", "Order Date", "Created Time",
-        "Ngày tạo đơn", "Thời gian tạo đơn",
+        "Order Creation Time",
+        "Order Date",
+        "Created Time",
+        "Ngày tạo đơn",
+        "Thời gian tạo đơn",
     ],
     "status": [
-        "Order Status", "Status", "Trạng thái đơn", "Trạng thái",
+        "Order Status",
+        "Status",
+        "Trạng thái đơn",
+        "Trạng thái",
     ],
     "creator_id": [
-        "Affiliate Partner ID", "Creator ID", "Affiliate ID",
-        "Mã affiliate", "Mã creator",
+        "Affiliate Partner ID",
+        "Creator ID",
+        "Affiliate ID",
+        "Mã affiliate",
+        "Mã creator",
     ],
     "creator_name": [
-        "Affiliate Partner", "Creator Name", "Affiliate Name",
-        "Tên affiliate", "Tên creator",
+        "Affiliate Partner",
+        "Creator Name",
+        "Affiliate Name",
+        "Tên affiliate",
+        "Tên creator",
     ],
     "refund_reason_raw": [
-        "Return Reason", "Refund Reason", "Return/Refund Reason",
-        "Lý do hoàn", "Lý do trả hàng",
+        "Return Reason",
+        "Refund Reason",
+        "Return/Refund Reason",
+        "Lý do hoàn",
+        "Lý do trả hàng",
     ],
     "quantity": [
-        "Quantity", "Product Quantity", "Qty", "Số lượng", "SL",
+        "Quantity",
+        "Product Quantity",
+        "Qty",
+        "Số lượng",
+        "SL",
     ],
     "transaction_fee": [
-        "Transaction Fee", "Platform Transaction Fee",
-        "Phí giao dịch", "Phí giao dịch nền tảng",
+        "Transaction Fee",
+        "Platform Transaction Fee",
+        "Phí giao dịch",
+        "Phí giao dịch nền tảng",
     ],
     "order_processing_fee": [
-        "Order Processing Fee", "Processing Fee",
-        "Phí xử lý đơn hàng", "Phí xử lý",
+        "Order Processing Fee",
+        "Processing Fee",
+        "Phí xử lý đơn hàng",
+        "Phí xử lý",
     ],
 }
 
@@ -79,51 +131,77 @@ COLUMN_ALIASES: dict[str, list[str]] = {
 # Source: Shopee Seller Center VN → Order Management → Export Order
 # Verified against real Shopee VN exports (May 2026)
 SHOPEE_COLUMN_ALIASES: dict[str, list[str]] = {
-    "tiktok_order_id": [    # reuse canonical name — represents any platform's order ID
-        "Order ID", "Mã đơn hàng", "order id",
+    "tiktok_order_id": [  # reuse canonical name — represents any platform's order ID
+        "Order ID",
+        "Mã đơn hàng",
+        "order id",
     ],
     "sku_id": [
-        "Product SKU ID", "Parent SKU Reference No.", "Variation SKU",
-        "Mã SKU", "Mã biến thể", "SKU Reference No.",
+        "Product SKU ID",
+        "Parent SKU Reference No.",
+        "Variation SKU",
+        "Mã SKU",
+        "Mã biến thể",
+        "SKU Reference No.",
     ],
     "sku_name": [
-        "Product Name", "Tên sản phẩm",
-        "Variation Name", "Product Variation",
+        "Product Name",
+        "Tên sản phẩm",
+        "Variation Name",
+        "Product Variation",
     ],
     "gmv": [
-        "Original Price", "Product Price", "Unit Price",
-        "Giá sản phẩm", "Selling Price", "Buyer Paid Price",
-        "Giá bán", "Tổng tiền hàng",
+        "Original Price",
+        "Product Price",
+        "Unit Price",
+        "Giá sản phẩm",
+        "Selling Price",
+        "Buyer Paid Price",
+        "Giá bán",
+        "Tổng tiền hàng",
     ],
     "platform_commission": [
-        "Commission Fee", "Seller Commission",
+        "Commission Fee",
+        "Seller Commission",
         "Phí hoa hồng",
     ],
     "affiliate_commission": [
-        "Affiliate Commission Fee", "Shopee Affiliate Commission",
-        "Phí affiliate", "Commission from Shopee Affiliate",
+        "Affiliate Commission Fee",
+        "Shopee Affiliate Commission",
+        "Phí affiliate",
+        "Commission from Shopee Affiliate",
     ],
     "voucher_cost": [
-        "Seller Voucher", "Seller Discount", "Seller Absorbed Coin Cashback",
-        "Voucher từ shop", "Giảm giá từ shop",
+        "Seller Voucher",
+        "Seller Discount",
+        "Seller Absorbed Coin Cashback",
+        "Voucher từ shop",
+        "Giảm giá từ shop",
     ],
     "shipping_subsidy": [
-        "Shipping Fee Subsidy", "Shipping Rebate Seller",
+        "Shipping Fee Subsidy",
+        "Shipping Rebate Seller",
         "Phí vận chuyển hỗ trợ bởi shop",
     ],
     "refund_amount": [
-        "Return Amount", "Refund Amount",
-        "Số tiền hoàn", "Tiền hoàn lại",
+        "Return Amount",
+        "Refund Amount",
+        "Số tiền hoàn",
+        "Tiền hoàn lại",
     ],
     "order_date": [
-        "Order Creation Date", "Order Paid Time",
-        "Ngày đặt hàng", "Thời gian đặt hàng",
+        "Order Creation Date",
+        "Order Paid Time",
+        "Ngày đặt hàng",
+        "Thời gian đặt hàng",
     ],
     "status": [
-        "Order Status", "Trạng thái đơn hàng",
+        "Order Status",
+        "Trạng thái đơn hàng",
     ],
     "quantity": [
-        "Quantity", "Amount",
+        "Quantity",
+        "Amount",
         "Số lượng",
     ],
     # Shopee bundles transaction fee differently — maps to same canonical
@@ -136,15 +214,18 @@ SHOPEE_COLUMN_ALIASES: dict[str, list[str]] = {
     # Shopee affiliate handled differently — creator_id usually absent
     "creator_id": [],
     "creator_name": [
-        "Affiliate Partner", "KOL Name",
+        "Affiliate Partner",
+        "KOL Name",
     ],
     "refund_reason_raw": [
-        "Return/Refund Reason", "Lý do hoàn hàng",
+        "Return/Refund Reason",
+        "Lý do hoàn hàng",
     ],
     # Parent SKU for variation→parent COGS cascade (Issue 2).
     # Separate from sku_id so both parent and variation are preserved.
     "parent_sku_id": [
-        "Parent SKU Reference No.", "Mã SKU cha",
+        "Parent SKU Reference No.",
+        "Mã SKU cha",
     ],
 }
 
@@ -160,11 +241,19 @@ DATE_FORMATS = [
 
 # PII fields to mask before sending to AI
 PII_FIELDS = {
-    "buyer_name", "customer_name", "buyer_username",
-    "recipient_name", "receiver_name",
-    "buyer_address", "shipping_address", "address",
-    "buyer_phone", "phone", "phone_number",
-    "buyer_email", "email",
+    "buyer_name",
+    "customer_name",
+    "buyer_username",
+    "recipient_name",
+    "receiver_name",
+    "buyer_address",
+    "shipping_address",
+    "address",
+    "buyer_phone",
+    "phone",
+    "phone_number",
+    "buyer_email",
+    "email",
 }
 
 MONEY_STRIP_PATTERN = re.compile(r"[₫đVND,\s]", re.IGNORECASE)
@@ -224,6 +313,7 @@ def parse_date(raw: Any) -> date | None:
     if raw is None or str(raw).strip() == "":
         return None
     from datetime import datetime
+
     raw_str = str(raw).strip()
     for fmt in DATE_FORMATS:
         try:

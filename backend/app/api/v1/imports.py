@@ -11,6 +11,7 @@ FIXES:
 - MED-V2-8: rollback orphan storage upload if enqueue fails
 - v0.5.2: ARQ pool extracted to core/arq_pool.py — shared with actions.py
 """
+
 import asyncio
 import hashlib
 import uuid
@@ -49,15 +50,18 @@ def _quick_detect_platform(file_bytes: bytes, ext: str) -> str:
             import io
 
             import pandas as pd
+
             headers_df = pd.read_excel(io.BytesIO(file_bytes), nrows=0, dtype=str)
             headers = list(headers_df.columns)
         else:
             # CSV: decode first line only
             first_line = file_bytes.split(b"\n")[0].decode("utf-8", errors="ignore")
             import csv
+
             reader = csv.reader([first_line])
             headers = next(reader, [])
         from app.services.parser.detector import detect_file_type
+
         _, _, platform = detect_file_type(headers)
         return platform
     except Exception:
@@ -81,8 +85,12 @@ async def upload_import(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail={"error": {"code": "INVALID_FILE_TYPE",
-                               "message": "Chỉ chấp nhận file CSV hoặc Excel từ TikTok Shop."}}
+            detail={
+                "error": {
+                    "code": "INVALID_FILE_TYPE",
+                    "message": "Chỉ chấp nhận file CSV hoặc Excel từ TikTok Shop.",
+                }
+            },
         )
 
     # F-C1-02: Read file with size limit check (streaming, not full buffer)
@@ -97,8 +105,12 @@ async def upload_import(
         if len(file_bytes) > MAX_FILE_SIZE_BYTES:
             raise HTTPException(
                 status_code=400,
-                detail={"error": {"code": "FILE_TOO_LARGE",
-                                   "message": "File quá lớn. Vui lòng xuất file theo từng tuần (tối đa 50MB)."}}
+                detail={
+                    "error": {
+                        "code": "FILE_TOO_LARGE",
+                        "message": "File quá lớn. Vui lòng xuất file theo từng tuần (tối đa 50MB).",
+                    }
+                },
             )
     file_size_bytes = len(file_bytes)
 
@@ -110,6 +122,7 @@ async def upload_import(
         _detected_platform == "unknown" and ext in {".xlsx", ".xls"}
     ):
         from app.core.gates import Feature, require_feature
+
         require_feature(shop, Feature.SHOPEE_LAZADA)
 
     # FIX BUG-NM5 (v2): only dedup against COMPLETED imports — allow re-upload after failures
@@ -119,7 +132,9 @@ async def upload_import(
         select(ImportSession).where(
             ImportSession.shop_id == shop.id,
             ImportSession.file_hash == file_hash,
-            ImportSession.status.in_(["completed", "completed_with_caveats", "processing", "pending"]),
+            ImportSession.status.in_(
+                ["completed", "completed_with_caveats", "processing", "pending"]
+            ),
         )
     )
     if existing:
@@ -129,7 +144,8 @@ async def upload_import(
 
     content_type = (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        if ext in {".xlsx", ".xls"} else "text/csv"
+        if ext in {".xlsx", ".xls"}
+        else "text/csv"
     )
     file_path = await storage_upload(
         shop_id=shop.id,
@@ -202,7 +218,7 @@ async def get_import_status(
     if not session:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"code": "NOT_FOUND", "message": "Import session không tồn tại."}}
+            detail={"error": {"code": "NOT_FOUND", "message": "Import session không tồn tại."}},
         )
     return ImportSessionResponse.model_validate(session)
 

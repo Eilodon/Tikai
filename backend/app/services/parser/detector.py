@@ -6,65 +6,97 @@ v2.0.0: Added Shopee fingerprints; detect_file_type() now returns platform as 3r
 # ── TikTok column fingerprints ────────────────────────────────────────────────
 COLUMN_FINGERPRINTS: dict[str, list[str]] = {
     "order_export": [
-        "order id", "product name", "sku id",
-        "original price", "order status", "order creation time",
+        "order id",
+        "product name",
+        "sku id",
+        "original price",
+        "order status",
+        "order creation time",
     ],
     "transaction_export": [
-        "transaction id", "transaction type",
-        "settlement amount", "transaction date",
+        "transaction id",
+        "transaction type",
+        "settlement amount",
+        "transaction date",
     ],
     "settlement_export": [
-        "payout id", "payout amount",
-        "order id", "payout time",
+        "payout id",
+        "payout amount",
+        "order id",
+        "payout time",
     ],
     # v2.0.0: Shopee fingerprints (EN headers)
     "shopee_order_export": [
-        "order id", "product name", "product sku id",
-        "original price", "order status", "order creation date",
+        "order id",
+        "product name",
+        "product sku id",
+        "original price",
+        "order status",
+        "order creation date",
         "transaction fee",
     ],
     # v2.0.0: Shopee VN export (Vietnamese headers)
     "shopee_order_export_vi": [
-        "mã đơn hàng", "tên sản phẩm", "mã sku",
-        "giá sản phẩm", "trạng thái đơn hàng", "ngày đặt hàng",
+        "mã đơn hàng",
+        "tên sản phẩm",
+        "mã sku",
+        "giá sản phẩm",
+        "trạng thái đơn hàng",
+        "ngày đặt hàng",
     ],
 }
 
 # ── Vietnamese column aliases for fingerprinting ──────────────────────────────
 COLUMN_FINGERPRINTS_VI: dict[str, list[str]] = {
     "order_export": [
-        "mã đơn hàng", "tên sản phẩm", "mã sku",
-        "giá gốc", "trạng thái đơn", "ngày tạo đơn",
+        "mã đơn hàng",
+        "tên sản phẩm",
+        "mã sku",
+        "giá gốc",
+        "trạng thái đơn",
+        "ngày tạo đơn",
     ],
     "transaction_export": [
-        "mã giao dịch", "loại giao dịch",
-        "số tiền quyết toán", "ngày giao dịch",
+        "mã giao dịch",
+        "loại giao dịch",
+        "số tiền quyết toán",
+        "ngày giao dịch",
     ],
     "settlement_export": [
-        "mã thanh toán", "số tiền thanh toán",
-        "mã đơn hàng", "thời gian thanh toán",
+        "mã thanh toán",
+        "số tiền thanh toán",
+        "mã đơn hàng",
+        "thời gian thanh toán",
     ],
     # Shopee EN export with VI UI labels — shares base columns with _vi variant
     "shopee_order_export": [
-        "mã đơn hàng", "tên sản phẩm", "mã sku",
-        "giá sản phẩm", "trạng thái đơn hàng", "ngày đặt hàng",
+        "mã đơn hàng",
+        "tên sản phẩm",
+        "mã sku",
+        "giá sản phẩm",
+        "trạng thái đơn hàng",
+        "ngày đặt hàng",
     ],
     # Shopee VN export — uses Shopee-VN-specific column names not present in EN variant
     "shopee_order_export_vi": [
-        "mã đơn hàng", "tên sản phẩm", "mã sku sản phẩm",
-        "giá bán", "trạng thái đơn hàng", "ngày đặt hàng",
+        "mã đơn hàng",
+        "tên sản phẩm",
+        "mã sku sản phẩm",
+        "giá bán",
+        "trạng thái đơn hàng",
+        "ngày đặt hàng",
         "phí hoa hồng",
     ],
 }
 
 # v2.0.0: Map file_type → platform
 PLATFORM_MAP: dict[str, str] = {
-    "order_export":          "tiktok",
-    "transaction_export":    "tiktok",
-    "settlement_export":     "tiktok",
-    "shopee_order_export":   "shopee",
+    "order_export": "tiktok",
+    "transaction_export": "tiktok",
+    "settlement_export": "tiktok",
+    "shopee_order_export": "shopee",
     "shopee_order_export_vi": "shopee",
-    "unknown":               "unknown",
+    "unknown": "unknown",
 }
 
 CONFIDENCE_HIGH = 0.7
@@ -98,7 +130,8 @@ def detect_file_type(headers: list[str]) -> tuple[str, float, str]:
         en_match = sum(1 for col in required_en if col in normalized) / max(len(required_en), 1)
         vi_match = (
             sum(1 for col in required_vi if col in normalized) / len(required_vi)
-            if required_vi else 0.0
+            if required_vi
+            else 0.0
         )
         scores[ftype] = max(en_match, vi_match)
 

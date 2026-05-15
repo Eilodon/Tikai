@@ -1,28 +1,40 @@
 """Tests for action_rules.py"""
-import pytest
+
 from decimal import Decimal
-from app.services.rule_engine.pl_calculator import SKUSummary, CreatorSummary
-from app.services.rule_engine.action_rules import evaluate_rules, ActionTrigger
+
+from app.services.rule_engine.action_rules import evaluate_rules
+from app.services.rule_engine.pl_calculator import CreatorSummary, SKUSummary
 
 
-def make_sku(sku_id="SKU-001", margin=None, refund_rate=Decimal("0.02"),
-             gmv_rank=1, cogs=Decimal("50000")) -> SKUSummary:
+def make_sku(
+    sku_id="SKU-001", margin=None, refund_rate=Decimal("0.02"), gmv_rank=1, cogs=Decimal("50000")
+) -> SKUSummary:
     return SKUSummary(
-        sku_id=sku_id, sku_name=f"SKU {sku_id}", gmv=Decimal("100000"),
-        net_revenue=Decimal("89000"), order_count=10, refund_count=0,
-        refund_rate=refund_rate, total_cogs=cogs,
-        margin=margin, margin_pct=None,
+        sku_id=sku_id,
+        sku_name=f"SKU {sku_id}",
+        gmv=Decimal("100000"),
+        net_revenue=Decimal("89000"),
+        order_count=10,
+        refund_count=0,
+        refund_rate=refund_rate,
+        total_cogs=cogs,
+        margin=margin,
+        margin_pct=None,
         affiliate_commission=Decimal("5000"),
-        voucher_cost=Decimal("3000"), gmv_rank=gmv_rank,
+        voucher_cost=Decimal("3000"),
+        gmv_rank=gmv_rank,
     )
 
 
 def make_creator(roi=Decimal("0.8"), commission=Decimal("10000")) -> CreatorSummary:
     return CreatorSummary(
-        creator_id="CR-001", creator_name="Creator A",
+        creator_id="CR-001",
+        creator_name="Creator A",
         attributed_gmv=Decimal("100000"),
         attributed_net_revenue=Decimal("89000"),
-        total_commission=commission, order_count=5, revenue_efficiency=roi,
+        total_commission=commission,
+        order_count=5,
+        revenue_efficiency=roi,
     )
 
 
@@ -44,7 +56,9 @@ class TestEvaluateRules:
 
     def test_same_entity_not_triggered_twice(self):
         # Both negative margin AND refund spike for same SKU
-        skus = [make_sku("SKU-001", margin=Decimal("-5000"), refund_rate=Decimal("0.4"), gmv_rank=1)]
+        skus = [
+            make_sku("SKU-001", margin=Decimal("-5000"), refund_rate=Decimal("0.4"), gmv_rank=1)
+        ]
         baselines = {"SKU-001": Decimal("0.05")}
         triggers = evaluate_rules(skus, [], baselines)
         sku_triggers = [t for t in triggers if t.entity_id == "SKU-001"]

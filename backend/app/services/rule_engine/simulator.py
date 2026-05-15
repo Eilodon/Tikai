@@ -6,6 +6,7 @@ INVARIANT: dùng Decimal, không dùng float.
 Key insight: InsightSnapshot đã có đủ aggregated metrics để simulate.
 Không cần re-read DB hay re-parse CSV.
 """
+
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -15,9 +16,10 @@ from app.services.rule_engine.fee_calculator import FeeConfigData, safe_divide
 @dataclass
 class SimulatorParams:
     """Params user muốn thay đổi — None = giữ nguyên từ snapshot thực."""
+
     affiliate_rate: Decimal | None = None
     voucher_rate: Decimal | None = None
-    price_change_pct: Decimal | None = None    # -0.20 = giảm 20% giá
+    price_change_pct: Decimal | None = None  # -0.20 = giảm 20% giá
     platform_commission_rate: Decimal | None = None
 
 
@@ -68,7 +70,8 @@ def simulate_sku(
     cogs_total = cogs_per_unit * total_quantity if cogs_per_unit is not None else None
     current_margin = (current_net_revenue - cogs_total) if cogs_total is not None else None
     current_margin_pct = (
-        safe_divide(current_margin, current_gmv) if current_margin is not None and current_gmv > 0
+        safe_divide(current_margin, current_gmv)
+        if current_margin is not None and current_gmv > 0
         else None
     )
 
@@ -95,15 +98,12 @@ def simulate_sku(
         # Net revenue changes by gmv_delta × (1 - platform_rate_total)
         gmv_delta = current_gmv * params.price_change_pct
         total_rate = (
-            current_fee_config.platform_commission_rate
-            + current_fee_config.transaction_fee_rate
+            current_fee_config.platform_commission_rate + current_fee_config.transaction_fee_rate
         )
         price_delta_on_nr = gmv_delta * (Decimal("1") - total_rate)
 
     simulated_net_revenue = current_net_revenue + aff_delta + voucher_delta + price_delta_on_nr
-    simulated_margin = (
-        (simulated_net_revenue - cogs_total) if cogs_total is not None else None
-    )
+    simulated_margin = (simulated_net_revenue - cogs_total) if cogs_total is not None else None
     simulated_margin_pct = (
         safe_divide(simulated_margin, current_gmv)
         if simulated_margin is not None and current_gmv > 0

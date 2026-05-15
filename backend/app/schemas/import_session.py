@@ -9,6 +9,7 @@ from app.schemas import CanContinueMode, FileType
 
 class ImportRescueMessage(BaseModel):
     """AI-generated rescue message for failed/limited imports."""
+
     file_type_guess: FileType
     file_type_confidence: str  # high | medium | low
     missing_columns: list[str]

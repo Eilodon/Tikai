@@ -13,9 +13,7 @@ from app.models.base import Base, TimestampMixin
 class Shop(Base, TimestampMixin):
     __tablename__ = "shops"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     shop_name: Mapped[str] = mapped_column(String(200), nullable=False)
     tiktok_shop_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
@@ -29,9 +27,7 @@ class Shop(Base, TimestampMixin):
     # v1.2.0 — Email digest opt-in
     # notification_email: seller's preferred email; falls back to auth email if null
     notification_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    email_digest_enabled: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    email_digest_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # P4-2: 14-day Pro trial for new signups
     trial_expires_at: Mapped[datetime | None] = mapped_column(

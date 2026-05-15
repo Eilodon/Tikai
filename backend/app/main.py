@@ -17,7 +17,17 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.errors import register_exception_handlers
-from app.api.v1 import actions, cogs, demo, imports, insights, livestream, shops, tools, weekly_receipts
+from app.api.v1 import (
+    actions,
+    cogs,
+    demo,
+    imports,
+    insights,
+    livestream,
+    shops,
+    tools,
+    weekly_receipts,
+)
 from app.core.config import get_settings
 from app.core.database import engine
 from app.core.logging import configure_logging

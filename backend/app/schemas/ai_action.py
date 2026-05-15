@@ -28,6 +28,7 @@ class AIActionResponse(BaseModel):
 
 class CompleteActionResponse(AIActionResponse):
     """Response after marking action as done."""
+
     pass
 
 

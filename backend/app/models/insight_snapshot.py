@@ -17,11 +17,10 @@ class InsightSnapshot(Base, TimestampMixin):
     INVARIANT: tất cả số trong đây đến từ Rule Engine, KHÔNG phải AI.
     AI chỉ đọc snapshot này để generate narratives.
     """
+
     __tablename__ = "insight_snapshots"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     shop_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False
     )
@@ -63,6 +62,4 @@ class InsightSnapshot(Base, TimestampMixin):
     shop: Mapped[Shop] = relationship(back_populates="insight_snapshots")  # noqa: F821
     ai_actions: Mapped[list[AIAction]] = relationship(back_populates="insight_snapshot")  # noqa: F821
 
-    __table_args__ = (
-        Index("ix_insight_snapshots_shop_id_period", "shop_id", "period_end"),
-    )
+    __table_args__ = (Index("ix_insight_snapshots_shop_id_period", "shop_id", "period_end"),)

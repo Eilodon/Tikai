@@ -2,7 +2,9 @@
 Auth — Supabase JWT validation.
 FIX ISSUE-01: error responses use standard {"error": {...}} format.
 """
+
 import uuid
+from datetime import UTC
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -32,7 +34,12 @@ async def get_current_user(
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": {"code": "UNAUTHORIZED", "message": "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại."}},
+            detail={
+                "error": {
+                    "code": "UNAUTHORIZED",
+                    "message": "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.",
+                }
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
@@ -50,7 +57,12 @@ async def get_current_user(
     except (JWTError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": {"code": "UNAUTHORIZED", "message": "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại."}},
+            detail={
+                "error": {
+                    "code": "UNAUTHORIZED",
+                    "message": "Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.",
+                }
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -60,7 +72,8 @@ async def get_current_shop(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Shop:
     """INVARIANT: every request that touches business data goes through this."""
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     shop = await db.scalar(
         select(Shop).where(
             Shop.owner_id == current_user.id,
@@ -70,13 +83,18 @@ async def get_current_shop(
     if not shop:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": {"code": "SHOP_NOT_FOUND", "message": "Chưa có shop. Vui lòng hoàn thành thiết lập."}},
+            detail={
+                "error": {
+                    "code": "SHOP_NOT_FOUND",
+                    "message": "Chưa có shop. Vui lòng hoàn thành thiết lập.",
+                }
+            },
         )
     # P4-2: auto-expire trial when trial_expires_at is in the past
     if shop.subscription_tier == "pro_trial":
         expires = getattr(shop, "trial_expires_at", None)
-        if expires and expires < datetime.now(timezone.utc):
+        if expires and expires < datetime.now(UTC):
             shop.subscription_tier = "free"
             shop.trial_expires_at = None
-            await db.flush()   # S-2: flush only — commit happens when request ends
+            await db.flush()  # S-2: flush only — commit happens when request ends
     return shop

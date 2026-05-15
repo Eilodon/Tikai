@@ -11,51 +11,45 @@ Without accurate baselines:
 
 Category IDs from TikTok Shop VN Seller Center category taxonomy.
 """
+
 from decimal import Decimal
 
 # Category slug → median refund rate (0.0 to 1.0)
 # Source: TikTok Shop VN merchant data research, SEA benchmarks (Momentum Works 2025)
 CATEGORY_REFUND_BASELINES_BY_SLUG: dict[str, Decimal] = {
     # Fashion & Apparel — high return due to fit/size issues
-    "fashion":           Decimal("0.18"),
-    "clothing":          Decimal("0.18"),
-    "apparel":           Decimal("0.18"),
-    "shoes":             Decimal("0.15"),
-    "accessories":       Decimal("0.10"),
-    "bags":              Decimal("0.12"),
-
+    "fashion": Decimal("0.18"),
+    "clothing": Decimal("0.18"),
+    "apparel": Decimal("0.18"),
+    "shoes": Decimal("0.15"),
+    "accessories": Decimal("0.10"),
+    "bags": Decimal("0.12"),
     # Beauty & Personal Care
-    "beauty":            Decimal("0.08"),
-    "skincare":          Decimal("0.07"),
-    "cosmetics":         Decimal("0.08"),
-    "haircare":          Decimal("0.06"),
-    "personal_care":     Decimal("0.06"),
-
+    "beauty": Decimal("0.08"),
+    "skincare": Decimal("0.07"),
+    "cosmetics": Decimal("0.08"),
+    "haircare": Decimal("0.06"),
+    "personal_care": Decimal("0.06"),
     # Food & Beverage — low (perishable, hard to return)
-    "food":              Decimal("0.03"),
-    "beverage":          Decimal("0.03"),
-    "supplement":        Decimal("0.05"),
-
+    "food": Decimal("0.03"),
+    "beverage": Decimal("0.03"),
+    "supplement": Decimal("0.05"),
     # Electronics — medium (defect returns)
-    "electronics":       Decimal("0.06"),
-    "mobile":            Decimal("0.05"),
-    "appliances":        Decimal("0.06"),
-
+    "electronics": Decimal("0.06"),
+    "mobile": Decimal("0.05"),
+    "appliances": Decimal("0.06"),
     # Home & Living
-    "home":              Decimal("0.09"),
-    "furniture":         Decimal("0.10"),
-    "kitchen":           Decimal("0.07"),
-
+    "home": Decimal("0.09"),
+    "furniture": Decimal("0.10"),
+    "kitchen": Decimal("0.07"),
     # Mother & Baby
-    "mother_baby":       Decimal("0.07"),
-    "baby_clothing":     Decimal("0.09"),
-
+    "mother_baby": Decimal("0.07"),
+    "baby_clothing": Decimal("0.09"),
     # Sports & Outdoors
-    "sports":            Decimal("0.08"),
-    "fitness":           Decimal("0.07"),
-
+    "sports": Decimal("0.08"),
+    "fitness": Decimal("0.07"),
     # Pets
-    "pets":              Decimal("0.05"),
+    "pets": Decimal("0.05"),
 }
 
 # Global fallback used when no category match

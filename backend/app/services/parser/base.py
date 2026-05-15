@@ -18,6 +18,7 @@ class RawOrderRow:
     and order_processing_fee (3,000 VND/order from 27/10/2025).
     Without these, Net Revenue can be overstated by 6-8%+ per order.
     """
+
     tiktok_order_id: str
     sku_id: str
     sku_name: str
@@ -33,8 +34,8 @@ class RawOrderRow:
     # COGS phải nhân với quantity, không phải order_count.
     quantity: int = 1
     # P0-3: TikTok-specific fees not in base commission
-    transaction_fee: Decimal = Decimal("0")        # 6% of buyer-paid from 09/05/2026
-    order_processing_fee: Decimal = Decimal("0")   # 3,000 VND/order from 27/10/2025
+    transaction_fee: Decimal = Decimal("0")  # 6% of buyer-paid from 09/05/2026
+    order_processing_fee: Decimal = Decimal("0")  # 3,000 VND/order from 27/10/2025
     creator_id: str | None = None
     creator_name: str | None = None
     refund_reason_raw: str | None = None
@@ -47,7 +48,7 @@ class RawOrderRow:
 @dataclass
 class ParseResult:
     file_type: FileType
-    platform: str = "tiktok"    # v2.0.0 — "tiktok" | "shopee" | "unknown"
+    platform: str = "tiktok"  # v2.0.0 — "tiktok" | "shopee" | "unknown"
     rows: list[RawOrderRow] = field(default_factory=list)
     failed_rows: list[dict] = field(default_factory=list)  # original dicts that failed parsing
     missing_columns: list[str] = field(default_factory=list)

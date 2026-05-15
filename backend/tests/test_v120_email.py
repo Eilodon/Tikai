@@ -3,9 +3,11 @@ Tests for v1.2.0 email digest feature.
 Verifies: send_weekly_digest behavior, VND formatting, SendGrid skip when not configured,
 worker email dispatch wiring, notification endpoint schema.
 """
+
 import inspect
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 
 class TestEmailServiceVNDFormatting:
@@ -13,6 +15,7 @@ class TestEmailServiceVNDFormatting:
 
     def _format(self, value: str) -> str:
         from app.services.email.client import _format_vnd
+
         return _format_vnd(value)
 
     def test_millions(self):
@@ -41,8 +44,10 @@ class TestEmailServiceSkipWhenNotConfigured:
 
     @pytest.mark.asyncio
     async def test_returns_false_when_no_api_key(self):
-        from app.services.email.client import send_weekly_digest
         from unittest.mock import patch
+
+        from app.services.email.client import send_weekly_digest
+
         # Override settings to simulate missing API key
         with patch("app.services.email.client.settings") as mock_settings:
             mock_settings.email_enabled = False
@@ -64,6 +69,7 @@ class TestEmailServiceSkipWhenNotConfigured:
     async def test_never_raises_on_sendgrid_exception(self):
         """Fire-and-forget invariant: never raises regardless of SendGrid errors."""
         from app.services.email.client import send_weekly_digest
+
         with patch("app.services.email.client.settings") as mock_settings:
             mock_settings.email_enabled = True
             mock_settings.sendgrid_api_key = "SG.test"
@@ -95,6 +101,7 @@ class TestWorkerEmailWiring:
 
     def test_worker_imports_email_service(self):
         from app.tasks import worker
+
         source = inspect.getsource(worker)
         assert "send_weekly_digest" in source, (
             "worker.py must import send_weekly_digest from email service"
@@ -102,9 +109,9 @@ class TestWorkerEmailWiring:
 
     def test_worker_dispatches_email_after_receipt_flush(self):
         from app.tasks import worker
+
         source = inspect.getsource(worker.run_weekly_receipts)
         # email dispatch must be AFTER the receipt flush/save
-        flush_idx = source.rfind("await db.flush()")
         email_idx = source.find("send_weekly_digest")
         assert email_idx > 0, "send_weekly_digest call not found in run_weekly_receipts"
         # Email dispatch should be after first flush (receipt save)
@@ -114,6 +121,7 @@ class TestWorkerEmailWiring:
 
     def test_worker_checks_email_enabled_flag(self):
         from app.tasks import worker
+
         source = inspect.getsource(worker.run_weekly_receipts)
         assert "email_digest_enabled" in source, (
             "Worker must check shop.email_digest_enabled before sending email"
@@ -128,19 +136,20 @@ class TestNotificationEndpoint:
 
     def test_notification_endpoint_exists(self):
         from app.api.v1 import shops
+
         source = inspect.getsource(shops)
         assert "update_notification_settings" in source
         assert "/shops/me/notifications" in source
 
     def test_notification_request_validates_email(self):
         from app.api.v1 import shops
+
         source = inspect.getsource(shops.update_notification_settings)
-        assert "@" in source, (
-            "Notification endpoint must validate email format (check for '@')"
-        )
+        assert "@" in source, "Notification endpoint must validate email format (check for '@')"
 
     def test_notification_model_has_both_fields(self):
         from app.api.v1 import shops
+
         # NotificationSettingsRequest must have both fields
         assert "notification_email" in inspect.getsource(shops)
         assert "email_digest_enabled" in inspect.getsource(shops)

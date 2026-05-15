@@ -2,16 +2,16 @@
 Tests for fee_calculator.py
 Run: pytest tests/rule_engine/test_fee_calculator.py -v
 """
-import pytest
-from decimal import Decimal
+
 from datetime import date
+from decimal import Decimal
 
 from app.services.parser.base import RawOrderRow
 from app.services.rule_engine.fee_calculator import (
-    calculate_net_revenue,
-    apply_fee_config,
-    safe_divide,
     FeeConfigData,
+    apply_fee_config,
+    calculate_net_revenue,
+    safe_divide,
 )
 
 
@@ -79,9 +79,14 @@ class TestCalculateNetRevenue:
         assert result == Decimal("0")
 
     def test_zero_gmv(self):
-        row = make_row(gmv=Decimal("0"), platform_commission=Decimal("0"),
-                       affiliate_commission=Decimal("0"), voucher_cost=Decimal("0"),
-                       shipping_subsidy=Decimal("0"), refund_amount=Decimal("0"))
+        row = make_row(
+            gmv=Decimal("0"),
+            platform_commission=Decimal("0"),
+            affiliate_commission=Decimal("0"),
+            voucher_cost=Decimal("0"),
+            shipping_subsidy=Decimal("0"),
+            refund_amount=Decimal("0"),
+        )
         result = calculate_net_revenue(row)
         assert result == Decimal("0")
 

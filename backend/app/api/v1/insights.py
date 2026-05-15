@@ -76,7 +76,9 @@ def _safe_parse(schema_class, items: list) -> list:
     return result
 
 
-def _to_response(snapshot: InsightSnapshot, is_first_import: bool = False) -> InsightSnapshotResponse:
+def _to_response(
+    snapshot: InsightSnapshot, is_first_import: bool = False
+) -> InsightSnapshotResponse:
     days_in_period = 7
     is_partial_period = False
     if snapshot.period_start and snapshot.period_end:
@@ -133,10 +135,14 @@ async def get_latest_insight(
                 }
             },
         )
-    total = await db.scalar(
-        select(func.count()).select_from(InsightSnapshot)
-        .where(InsightSnapshot.shop_id == shop.id)
-    ) or 0
+    total = (
+        await db.scalar(
+            select(func.count())
+            .select_from(InsightSnapshot)
+            .where(InsightSnapshot.shop_id == shop.id)
+        )
+        or 0
+    )
     return _to_response(snapshot, is_first_import=(total == 1))
 
 
@@ -208,14 +214,8 @@ async def get_benchmark(
     total_gmv = sum(s.gmv for s in top_skus)
     shop_margin_pct = None
     if total_gmv > 0:
-        weighted_margin = sum(
-            s.margin_pct * s.gmv
-            for s in top_skus
-            if s.margin_pct is not None
-        )
-        skus_with_margin_gmv = sum(
-            s.gmv for s in top_skus if s.margin_pct is not None
-        )
+        weighted_margin = sum(s.margin_pct * s.gmv for s in top_skus if s.margin_pct is not None)
+        skus_with_margin_gmv = sum(s.gmv for s in top_skus if s.margin_pct is not None)
         if skus_with_margin_gmv > 0:
             shop_margin_pct = weighted_margin / skus_with_margin_gmv
 
@@ -357,7 +357,7 @@ async def recompute_insight(
         select(ImportSession).where(ImportSession.id == base.import_session_id)
     )
     fee_platform = (import_session.platform if import_session else None) or "tiktok"
-    fee_period_end   = base.period_end
+    fee_period_end = base.period_end
     fee_period_start = base.period_start
 
     def _build_fee_config(db_row) -> FeeConfigData:
@@ -373,18 +373,20 @@ async def recompute_insight(
             effective_to=db_row.effective_to,
         )
 
-    fee_configs_db = (await db.scalars(
-        select(FeeConfig)
-        .where(
-            FeeConfig.platform == fee_platform,
-            FeeConfig.effective_from <= fee_period_end,
-            or_(
-                FeeConfig.effective_to.is_(None),
-                FeeConfig.effective_to >= fee_period_start,
-            ),
+    fee_configs_db = (
+        await db.scalars(
+            select(FeeConfig)
+            .where(
+                FeeConfig.platform == fee_platform,
+                FeeConfig.effective_from <= fee_period_end,
+                or_(
+                    FeeConfig.effective_to.is_(None),
+                    FeeConfig.effective_to >= fee_period_start,
+                ),
+            )
+            .order_by(FeeConfig.effective_from.asc())
         )
-        .order_by(FeeConfig.effective_from.asc())
-    )).all()
+    ).all()
 
     if not fee_configs_db and fee_platform != "tiktok":
         log.warning(
@@ -393,18 +395,20 @@ async def recompute_insight(
             snapshot_id=str(base.id),
             shop_id=str(shop.id),
         )
-        fee_configs_db = (await db.scalars(
-            select(FeeConfig)
-            .where(
-                FeeConfig.platform == "tiktok",
-                FeeConfig.effective_from <= fee_period_end,
-                or_(
-                    FeeConfig.effective_to.is_(None),
-                    FeeConfig.effective_to >= fee_period_start,
-                ),
+        fee_configs_db = (
+            await db.scalars(
+                select(FeeConfig)
+                .where(
+                    FeeConfig.platform == "tiktok",
+                    FeeConfig.effective_from <= fee_period_end,
+                    or_(
+                        FeeConfig.effective_to.is_(None),
+                        FeeConfig.effective_to >= fee_period_start,
+                    ),
+                )
+                .order_by(FeeConfig.effective_from.asc())
             )
-            .order_by(FeeConfig.effective_from.asc())
-        )).all()
+        ).all()
 
     if not fee_configs_db:
         raise HTTPException(
@@ -529,6 +533,7 @@ async def recompute_insight(
 
 # ── CSV Export ────────────────────────────────────────────────────────────────
 
+
 @router.get("/insights/{snapshot_id}/export.csv")
 async def export_snapshot_csv(
     snapshot_id: uuid.UUID,
@@ -556,35 +561,52 @@ async def export_snapshot_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow([
-        "SKU ID", "SKU Name", "GMV (VND)", "Net Revenue (VND)",
-        "Orders", "Units Sold", "Refund Rate (%)",
-        "Margin (VND)", "Margin (%)", "Health",
-        "Affiliate Cost (VND)", "Voucher Cost (VND)",
-    ])
+    writer.writerow(
+        [
+            "SKU ID",
+            "SKU Name",
+            "GMV (VND)",
+            "Net Revenue (VND)",
+            "Orders",
+            "Units Sold",
+            "Refund Rate (%)",
+            "Margin (VND)",
+            "Margin (%)",
+            "Health",
+            "Affiliate Cost (VND)",
+            "Voucher Cost (VND)",
+        ]
+    )
     for s in top_skus:
         refund_pct = f"{float(s.refund_rate) * 100:.1f}"
         margin_pct = f"{float(s.margin_pct) * 100:.1f}" if s.margin_pct is not None else ""
-        writer.writerow([
-            s.sku_id,
-            s.sku_name,
-            str(s.gmv),
-            str(s.net_revenue),
-            s.order_count,
-            s.total_quantity,
-            refund_pct,
-            str(s.margin) if s.margin is not None else "",
-            margin_pct,
-            s.health_status,
-            str(s.affiliate_commission),
-            str(s.voucher_cost),
-        ])
+        writer.writerow(
+            [
+                s.sku_id,
+                s.sku_name,
+                str(s.gmv),
+                str(s.net_revenue),
+                s.order_count,
+                s.total_quantity,
+                refund_pct,
+                str(s.margin) if s.margin is not None else "",
+                margin_pct,
+                s.health_status,
+                str(s.affiliate_commission),
+                str(s.voucher_cost),
+            ]
+        )
 
     period = f"{snapshot.period_start}_{snapshot.period_end}"
     filename = f"tikai_sku_{period}.csv"
     buf.seek(0)
 
-    log.info("export_snapshot_csv", shop_id=str(shop.id), snapshot_id=str(snapshot_id), rows=len(top_skus))
+    log.info(
+        "export_snapshot_csv",
+        shop_id=str(shop.id),
+        snapshot_id=str(snapshot_id),
+        rows=len(top_skus),
+    )
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",

@@ -4,6 +4,7 @@ INVARIANT: AI chỉ nhận những gì defined ở đây.
 KHÔNG pass raw CSV, KHÔNG pass raw DB rows.
 Tất cả số phải từ Rule Engine output.
 """
+
 from decimal import Decimal
 from typing import Literal
 
@@ -14,9 +15,10 @@ from app.schemas.insight import LeakItem
 
 # ── AI #1: Import Rescue ──────────────────────────────────────────────────────
 
+
 class ImportRescueInput(BaseModel):
-    headers: list[str]                    # column names từ file
-    sample_rows: list[dict]               # max 5 rows, PII đã mask
+    headers: list[str]  # column names từ file
+    sample_rows: list[dict]  # max 5 rows, PII đã mask
     file_size_kb: int
     required_columns: list[str]
 
@@ -38,13 +40,14 @@ class ImportRescueOutput(BaseModel):
 
 # ── AI #2: Aha Narrator ───────────────────────────────────────────────────────
 
+
 class AhaNarrativeInput(BaseModel):
     shop_name: str
-    period_label: str                     # "tuần từ 01/05 đến 07/05"
+    period_label: str  # "tuần từ 01/05 đến 07/05"
     gmv_total: MoneyVND
     net_revenue: MoneyVND
-    cash_in_14d: MoneyVND | None = None   # FIX BUG-NH6: settlement forecast for narrative
-    top_leaks: list[LeakItem]             # max 3 — enforced by caller
+    cash_in_14d: MoneyVND | None = None  # FIX BUG-NH6: settlement forecast for narrative
+    top_leaks: list[LeakItem]  # max 3 — enforced by caller
     is_net_revenue_mode: bool
     cogs_coverage_pct: Decimal
 
@@ -55,22 +58,23 @@ class AhaNarrativeInput(BaseModel):
 
 
 class AhaNarrativeOutput(BaseModel):
-    summary: str                          # 2-3 câu
-    key_insight: str                      # 1 câu vấn đề lớn nhất
-    top_action_today: str                 # 1 câu action cụ thể
+    summary: str  # 2-3 câu
+    key_insight: str  # 1 câu vấn đề lớn nhất
+    top_action_today: str  # 1 câu action cụ thể
     missing_data: list[str] = []
 
 
 # ── AI #3: Action Coach ───────────────────────────────────────────────────────
 
+
 class ActionCoachInput(BaseModel):
     rule_id: str
-    entity_id: str                        # FIX BUG-NC2+H7: unique entity ID for cache key
+    entity_id: str  # FIX BUG-NC2+H7: unique entity ID for cache key
     entity_name: str
     metric_key: str
     metric_value: MoneyVND
-    metric_label: str                     # human-readable Vietnamese label
-    context_json: dict                    # additional context, NO raw financials
+    metric_label: str  # human-readable Vietnamese label
+    context_json: dict  # additional context, NO raw financials
 
 
 class ActionCoachOutput(BaseModel):
@@ -79,13 +83,14 @@ class ActionCoachOutput(BaseModel):
     recommended_step: str
     risk_warning: str | None = None
     confidence: ConfidenceLevel
-    forbidden_claims: list[str] = []      # AI self-declared things it cannot claim
+    forbidden_claims: list[str] = []  # AI self-declared things it cannot claim
 
 
 # ── AI #4: Refund Clusterer ───────────────────────────────────────────────────
 
+
 class RefundClusterInput(BaseModel):
-    refund_reasons: list[str]             # raw text, max 200 items
+    refund_reasons: list[str]  # raw text, max 200 items
     sku_name: str | None = None
     total_refund_count: int
     period_label: str
@@ -99,41 +104,42 @@ class RefundClusterInput(BaseModel):
 class RefundCluster(BaseModel):
     label: str
     count: int
-    pct: Decimal                          # 0-1
-    sample_reasons: list[str]            # 2-3 examples
+    pct: Decimal  # 0-1
+    sample_reasons: list[str]  # 2-3 examples
 
 
 class RefundClusterOutput(BaseModel):
-    clusters: list[RefundCluster]         # sorted by count desc, max 5
+    clusters: list[RefundCluster]  # sorted by count desc, max 5
     suggested_actions: list[str]
     missing_data: list[str] = []
 
 
 # ── AI #5: Weekly Receipt Writer ─────────────────────────────────────────────
 
+
 class CompletedAction(BaseModel):
     action_title: str
-    completed_at: str                     # ISO datetime string
+    completed_at: str  # ISO datetime string
     is_confirmed_impact: bool
-    confirmed_delta: MoneyVND | None = None    # only if is_confirmed_impact
-    estimated_delta: MoneyVND | None = None    # if not confirmed yet
+    confirmed_delta: MoneyVND | None = None  # only if is_confirmed_impact
+    estimated_delta: MoneyVND | None = None  # if not confirmed yet
 
 
 class WeeklyReceiptInput(BaseModel):
     shop_name: str
     period_label: str
     actions_completed: list[CompletedAction]
-    total_confirmed_saved: MoneyVND       # sum of confirmed_delta, from Rule Engine
-    total_estimated_saved: MoneyVND       # sum of estimated_delta, from Rule Engine
+    total_confirmed_saved: MoneyVND  # sum of confirmed_delta, from Rule Engine
+    total_estimated_saved: MoneyVND  # sum of estimated_delta, from Rule Engine
     subscription_cost_vnd: MoneyVND
 
 
 class WeeklyReceiptOutput(BaseModel):
     headline: str
-    confirmed_section: str               # only confirmed savings
-    estimated_section: str               # clearly labeled as estimate
+    confirmed_section: str  # only confirmed savings
+    estimated_section: str  # clearly labeled as estimate
     next_week_focus: str
-    disclaimer: str                      # MANDATORY — never empty
+    disclaimer: str  # MANDATORY — never empty
     missing_data: list[str] = []
 
     @field_validator("disclaimer")

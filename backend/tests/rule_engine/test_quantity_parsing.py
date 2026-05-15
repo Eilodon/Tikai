@@ -1,7 +1,10 @@
 """Test BUG-NH1 fix: quantity handles Excel float-strings."""
-from app.services.parser.order_parser import _parse_quantity, _require_date
+
 from datetime import date
+
 import pytest
+
+from app.services.parser.order_parser import _parse_quantity, _require_date
 
 
 class TestQuantityParsing:

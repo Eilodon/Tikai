@@ -9,12 +9,13 @@ Covers all 5 issues found in v2.0.0 code review:
   5. test_parser.py: 2-tuple unpack of detect_file_type() → ValueError (v2.0.0 returns 3-tuple)
      [Fixed in test_parser.py directly — verified here as a smoke test]
 """
+
 import inspect
-from decimal import Decimal
+
 import pytest
 
-
 # ─── FIX 1: Order.platform in process_import bulk insert ─────────────────────
+
 
 class TestOrderPlatformFix:
     """
@@ -25,6 +26,7 @@ class TestOrderPlatformFix:
 
     def test_process_import_sets_platform_on_order(self):
         from app.tasks import process_import as pm
+
         source = inspect.getsource(pm.process_import)
 
         # The Order() constructor call must include platform=
@@ -38,6 +40,7 @@ class TestOrderPlatformFix:
     def test_platform_variable_set_before_order_insert(self):
         """_order_platform must be resolved before the Order() list comprehension."""
         from app.tasks import process_import as pm
+
         source = inspect.getsource(pm.process_import)
 
         platform_assign_idx = source.find("_order_platform = parse_result.platform")
@@ -57,6 +60,7 @@ class TestOrderPlatformFix:
     def test_session_platform_also_set(self):
         """import_session.platform must also be set (was correct in v2.0.0)."""
         from app.tasks import process_import as pm
+
         source = inspect.getsource(pm.process_import)
         assert "session.platform" in source, (
             "import_session.platform must also be updated to match parse_result.platform"
@@ -64,6 +68,7 @@ class TestOrderPlatformFix:
 
 
 # ─── FIX 2: Email HTML escaping ──────────────────────────────────────────────
+
 
 class TestEmailHtmlEscaping:
     """
@@ -74,6 +79,7 @@ class TestEmailHtmlEscaping:
 
     def test_email_client_imports_html_module(self):
         from app.services.email import client
+
         source = inspect.getsource(client)
         assert "import html" in source or "html_lib" in source, (
             "email/client.py must import Python's html module for html.escape(). "
@@ -83,10 +89,12 @@ class TestEmailHtmlEscaping:
 
     def test_escape_helper_exists(self):
         from app.services.email.client import _escape
+
         assert callable(_escape), "_escape() helper must exist in email/client.py"
 
     def test_escape_sanitizes_html_chars(self):
         from app.services.email.client import _escape
+
         result = _escape('<script>alert("xss")</script>')
         assert "<script>" not in result
         assert "&lt;script&gt;" in result
@@ -94,12 +102,14 @@ class TestEmailHtmlEscaping:
     def test_escape_converts_newlines_to_br(self):
         """Multi-line AI output should render as line breaks in email."""
         from app.services.email.client import _escape
+
         result = _escape("Line one\nLine two")
         assert "<br>" in result
         assert "\n" not in result
 
     def test_send_weekly_digest_uses_escape(self):
         from app.services.email import client
+
         source = inspect.getsource(client.send_weekly_digest)
         # All AI fields must be escaped — check at least headline and confirmed_section
         assert "_escape(headline)" in source, (
@@ -115,6 +125,7 @@ class TestEmailHtmlEscaping:
     def test_no_raw_ai_content_in_format_call(self):
         """Raw unescaped AI fields must not appear in .format() call."""
         from app.services.email import client
+
         source = inspect.getsource(client.send_weekly_digest)
         # Find the .format() call block — confirmed_section= should be _escape(...)
         assert "confirmed_section=confirmed_section," not in source, (
@@ -127,6 +138,7 @@ class TestEmailHtmlEscaping:
 
 # ─── FIX 3: _format_vnd non-integer millions ─────────────────────────────────
 
+
 class TestFormatVND:
     """
     _format_vnd() must use Vietnamese locale (comma as decimal separator).
@@ -137,6 +149,7 @@ class TestFormatVND:
 
     def _fmt(self, val: str) -> str:
         from app.services.email.client import _format_vnd
+
         return _format_vnd(val)
 
     # ── Non-integer millions (the previously broken cases) ──────────────────
@@ -194,6 +207,7 @@ class TestFormatVND:
 
 # ─── FIX 4: sw.js CACHE_VERSION ──────────────────────────────────────────────
 
+
 class TestServiceWorkerVersion:
     """
     CACHE_VERSION in sw.js must not be the stale v1.0.0 string.
@@ -203,9 +217,9 @@ class TestServiceWorkerVersion:
 
     def test_cache_version_not_stale(self):
         import os
+
         sw_path = os.path.join(
-            os.path.dirname(__file__),
-            "..", "..", "..", "frontend", "public", "sw.js"
+            os.path.dirname(__file__), "..", "..", "..", "frontend", "public", "sw.js"
         )
         sw_path = os.path.normpath(sw_path)
         if not os.path.exists(sw_path):
@@ -222,10 +236,10 @@ class TestServiceWorkerVersion:
 
     def test_cache_version_present(self):
         import os
-        sw_path = os.path.normpath(os.path.join(
-            os.path.dirname(__file__),
-            "..", "..", "..", "frontend", "public", "sw.js"
-        ))
+
+        sw_path = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "public", "sw.js")
+        )
         if not os.path.exists(sw_path):
             pytest.skip("sw.js not found")
         with open(sw_path) as f:
@@ -236,6 +250,7 @@ class TestServiceWorkerVersion:
 
 # ─── FIX 5: detect_file_type 3-tuple (smoke test) ────────────────────────────
 
+
 class TestDetectFileTypeTuple:
     """
     detect_file_type() returns a 3-tuple since v2.0.0.
@@ -245,8 +260,17 @@ class TestDetectFileTypeTuple:
 
     def test_returns_exactly_3_elements(self):
         from app.services.parser.detector import detect_file_type
-        result = detect_file_type(["Order ID", "Product Name", "SKU ID",
-                                   "Original Price", "Order Status", "Order Creation Time"])
+
+        result = detect_file_type(
+            [
+                "Order ID",
+                "Product Name",
+                "SKU ID",
+                "Original Price",
+                "Order Status",
+                "Order Creation Time",
+            ]
+        )
         assert len(result) == 3, (
             f"detect_file_type must return (file_type, confidence, platform) — "
             f"got {len(result)} elements. "
@@ -255,6 +279,7 @@ class TestDetectFileTypeTuple:
 
     def test_three_tuple_unpacks_cleanly(self):
         from app.services.parser.detector import detect_file_type
+
         # This is exactly the unpack form that was broken before the fix
         file_type, score, platform = detect_file_type(
             ["Order ID", "SKU ID", "Original Price", "Order Status", "Order Creation Time"]
@@ -266,6 +291,7 @@ class TestDetectFileTypeTuple:
 
 # ─── FIX async sg.send (structural) ─────────────────────────────────────────
 
+
 class TestEmailAsyncSend:
     """
     sg.send() is a synchronous blocking HTTP call.
@@ -275,6 +301,7 @@ class TestEmailAsyncSend:
 
     def test_uses_run_in_executor(self):
         from app.services.email import client
+
         source = inspect.getsource(client.send_weekly_digest)
         assert "run_in_executor" in source, (
             "sg.send() must be run via asyncio.get_event_loop().run_in_executor(). "
@@ -285,6 +312,7 @@ class TestEmailAsyncSend:
     def test_uses_app_base_url_not_hardcoded(self):
         """CTA link must come from settings.app_base_url, not hardcoded."""
         from app.services.email import client
+
         source = inspect.getsource(client.send_weekly_digest)
         assert "app_base_url" in source, (
             "send_weekly_digest must use settings.app_base_url for CTA link, "

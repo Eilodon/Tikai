@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
-from app.services.rule_engine.baselines import DEFAULT_BASELINE
+from app.services.rule_engine.baselines import get_refund_baseline_for_shop_category
 from app.services.rule_engine.pl_calculator import CreatorSummary, SKUSummary
 
 ActionType = Literal["reduce_voucher", "pause_creator", "fix_pdp", "check_cogs", "review_script"]
@@ -28,6 +28,7 @@ def evaluate_rules(
     sku_summaries: list[SKUSummary],
     creator_summaries: list[CreatorSummary],
     category_baselines: dict[str, Decimal],
+    shop_category: str | None = None,
 ) -> list[ActionTrigger]:
     """
     Evaluate all rules. Return sorted by priority ASC (1 = highest).
@@ -62,7 +63,8 @@ def evaluate_rules(
             )
 
         # Rule: sku_refund_spike
-        baseline = category_baselines.get(sku.sku_id, DEFAULT_BASELINE)  # FIX BUG-H5
+        shop_fallback = get_refund_baseline_for_shop_category(shop_category)
+        baseline = category_baselines.get(sku.sku_id, shop_fallback)
         if sku.refund_rate > baseline * Decimal("1.5"):
             add(
                 ActionTrigger(

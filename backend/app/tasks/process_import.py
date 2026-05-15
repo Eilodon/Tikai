@@ -257,6 +257,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 shop_id=str(session.shop_id),
                 rule_engine_version=settings.rule_engine_version,
                 top_n_leaks=settings.ai_top_n_leaks,
+                shop_category=getattr(shop, "category", None),
             )
 
             settlement = calculate_settlement_forecast(

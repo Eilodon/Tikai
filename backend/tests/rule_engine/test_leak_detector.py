@@ -105,3 +105,47 @@ class TestDetectTopLeaks:
         skus = [make_sku("SKU-001", margin=Decimal("50000"), gmv_rank=1)]
         leaks = detect_top_leaks(skus, [], {})
         assert all(leak.reason != "refund_spike" for leak in leaks)
+
+
+class TestShopCategoryBaseline:
+    """v2.1.0: shop_category wires industry_data.py baselines into leak detector."""
+
+    def test_fashion_shop_not_flagged_at_14pct(self):
+        """Fashion baseline = 15% → 14% refund is below threshold (15% × 1.5 = 22.5%)."""
+        sku = make_sku("SKU-FASHION", refund_rate=Decimal("0.14"), gmv_rank=1)
+        leaks = detect_top_leaks([sku], [], {}, shop_category="fashion")
+        refund_leaks = [leak for leak in leaks if leak.reason == "refund_spike"]
+        assert len(refund_leaks) == 0, (
+            "Fashion SKU at 14% should NOT be flagged — fashion baseline is 15%, "
+            "threshold is 22.5%. Old 9% default would flag this at 13.5% threshold."
+        )
+
+    def test_fashion_shop_flagged_at_25pct(self):
+        """Fashion baseline = 15% → 25% refund exceeds threshold (15% × 1.5 = 22.5%)."""
+        sku = make_sku("SKU-FASHION", refund_rate=Decimal("0.25"), gmv_rank=1)
+        leaks = detect_top_leaks([sku], [], {}, shop_category="fashion")
+        refund_leaks = [leak for leak in leaks if leak.reason == "refund_spike"]
+        assert len(refund_leaks) == 1
+
+    def test_food_shop_flagged_at_8pct(self):
+        """Food baseline = 5% → 8% refund exceeds threshold (5% × 1.5 = 7.5%)."""
+        sku = make_sku("SKU-FOOD", refund_rate=Decimal("0.08"), gmv_rank=1)
+        leaks = detect_top_leaks([sku], [], {}, shop_category="food")
+        refund_leaks = [leak for leak in leaks if leak.reason == "refund_spike"]
+        assert len(refund_leaks) == 1
+
+    def test_no_category_falls_back_to_default(self):
+        """Without shop_category, DEFAULT_BASELINE (9%) is used as fallback."""
+        from app.services.rule_engine.baselines import DEFAULT_BASELINE
+
+        assert DEFAULT_BASELINE == Decimal("0.09"), (
+            "DEFAULT_BASELINE must be 9% — matches 'other' in industry_data.py"
+        )
+
+    def test_per_sku_override_takes_precedence_over_shop_category(self):
+        """category_baselines dict wins over shop_category fallback."""
+        sku = make_sku("SKU-001", refund_rate=Decimal("0.14"), gmv_rank=1)
+        # Override SKU-001 to 20% → threshold = 30% → 14% is fine
+        leaks = detect_top_leaks([sku], [], {"SKU-001": Decimal("0.20")}, shop_category="food")
+        refund_leaks = [leak for leak in leaks if leak.reason == "refund_spike"]
+        assert len(refund_leaks) == 0

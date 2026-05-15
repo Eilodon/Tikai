@@ -116,6 +116,8 @@ async def update_shop_me(
         shop.shop_name = body.shop_name
     if body.tiktok_shop_id is not None:
         shop.tiktok_shop_id = body.tiktok_shop_id
+    if body.category is not None:
+        shop.category = body.category
 
     await db.flush()
     await db.refresh(shop)

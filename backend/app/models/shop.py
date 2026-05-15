@@ -36,6 +36,9 @@ class Shop(Base, TimestampMixin):
     # P2-3: Web Push subscription object from browser Push API
     push_subscription_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    # v2.1.0: shop category for category-aware refund baselines (industry_data.py slugs)
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # Relationships
     import_sessions: Mapped[list[ImportSession]] = relationship(back_populates="shop")  # noqa: F821
     insight_snapshots: Mapped[list[InsightSnapshot]] = relationship(back_populates="shop")  # noqa: F821

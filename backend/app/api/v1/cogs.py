@@ -7,11 +7,13 @@ v2.1.0: POST /cogs/bulk-import accepts CSV upload.
 
 import csv
 import io
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,6 +83,39 @@ async def get_cogs(
         for row in sku_rows
     ]
     return COGSBatchResponse(updated=0, items=items, total_skus=len(items))
+
+
+@router.get("/cogs/template.csv")
+async def download_cogs_template(
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Download CSV template pre-filled with shop's existing SKUs and current COGS.
+    Seller opens in Excel, fills in cogs_per_unit, uploads via /cogs/bulk-import.
+    """
+    result = await db.execute(
+        select(Order.sku_id, Order.sku_name)
+        .where(Order.shop_id == shop.id)
+        .distinct()
+        .order_by(Order.sku_name)
+        .limit(MAX_COGS_SKUS)
+    )
+    sku_rows = result.fetchall()
+    cogs_map: dict = shop.cogs_map or {}
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["sku_id", "sku_name", "cogs_per_unit", "note (VND)"])
+    for row in sku_rows:
+        writer.writerow([row.sku_id, row.sku_name, cogs_map.get(row.sku_id, "0"), ""])
+
+    content = buf.getvalue().encode("utf-8-sig")  # BOM for Excel
+    filename = f"cogs_template_{date.today()}.csv"
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/cogs")
@@ -224,3 +259,88 @@ async def bulk_import_cogs(
         errors=len(errors),
     )
     return COGSBulkImportResponse(updated=updated, skipped=skipped, errors=errors)
+
+
+# ── COGS Time-Series Entries ──────────────────────────────────────────────────
+
+
+class COGSEntryItem(BaseModel):
+    sku_id: str = Field(..., max_length=100)
+    cogs_per_unit: Decimal = Field(..., gt=0)
+    effective_date: date
+    note: str | None = Field(None, max_length=200)
+
+
+class COGSEntryResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: str
+    shop_id: str
+    sku_id: str
+    cogs_per_unit: str
+    effective_date: date
+    note: str | None
+    created_at: date
+
+
+@router.get("/cogs/history/{sku_id}")
+async def get_cogs_history(
+    sku_id: str,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[COGSEntryResponse]:
+    """Return COGS history for a SKU, ordered by effective_date desc, capped at 24."""
+    from app.models.cogs_entry import COGSEntry
+
+    rows = await db.scalars(
+        select(COGSEntry)
+        .where(COGSEntry.shop_id == shop.id, COGSEntry.sku_id == sku_id)
+        .order_by(COGSEntry.effective_date.desc())
+        .limit(24)
+    )
+    return [
+        COGSEntryResponse(
+            id=str(r.id),
+            shop_id=str(r.shop_id),
+            sku_id=r.sku_id,
+            cogs_per_unit=str(r.cogs_per_unit),
+            effective_date=r.effective_date,
+            note=r.note,
+            created_at=r.created_at.date() if hasattr(r.created_at, "date") else r.created_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/cogs/entries", status_code=201)
+@limiter.limit("30/hour")
+async def create_cogs_entry(
+    request: Request,
+    body: COGSEntryItem,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> COGSEntryResponse:
+    """Create a timed COGS entry for a SKU."""
+    from app.models.cogs_entry import COGSEntry
+
+    entry = COGSEntry(
+        shop_id=shop.id,
+        sku_id=body.sku_id,
+        cogs_per_unit=body.cogs_per_unit,
+        effective_date=body.effective_date,
+        note=body.note,
+    )
+    db.add(entry)
+    await db.flush()
+    await db.refresh(entry)
+    return COGSEntryResponse(
+        id=str(entry.id),
+        shop_id=str(entry.shop_id),
+        sku_id=entry.sku_id,
+        cogs_per_unit=str(entry.cogs_per_unit),
+        effective_date=entry.effective_date,
+        note=entry.note,
+        created_at=entry.created_at.date()
+        if hasattr(entry.created_at, "date")
+        else entry.created_at,
+    )

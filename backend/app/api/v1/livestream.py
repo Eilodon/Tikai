@@ -4,18 +4,19 @@ Unique Tikai feature — no competitor tracks live stream ROI for VN sellers.
 """
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_shop
 from app.core.database import get_db
 from app.models.livestream import LiveStreamSession
+from app.models.order import Order
 from app.models.shop import Shop
 
 router = APIRouter()
@@ -31,12 +32,16 @@ class LiveStreamCreateRequest(BaseModel):
     ads_cost: Decimal = Field(Decimal("0"), ge=0)
     other_cost: Decimal = Field(Decimal("0"), ge=0)
     notes: str | None = Field(None, max_length=500)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
 
 class LiveStreamUpdateResultRequest(BaseModel):
     attributed_gmv: Decimal | None = Field(None, ge=0)
     attributed_orders: int | None = Field(None, ge=0)
     attributed_net_revenue: Decimal | None = None  # can be negative (fees > GMV)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
 
 class LiveStreamResponse(BaseModel):
@@ -55,6 +60,8 @@ class LiveStreamResponse(BaseModel):
     live_roi: Decimal | None
     net_roi: Decimal | None
     notes: str | None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
 
 def _to_response(ls: LiveStreamSession) -> LiveStreamResponse:
@@ -74,6 +81,8 @@ def _to_response(ls: LiveStreamSession) -> LiveStreamResponse:
         live_roi=ls.live_roi,
         net_roi=ls.net_roi,
         notes=ls.notes,
+        start_time=ls.start_time,
+        end_time=ls.end_time,
     )
 
 
@@ -145,3 +154,79 @@ async def delete_livestream(
         raise HTTPException(404)
     await db.delete(ls)
     # F-3-04: removed explicit db.commit() — get_db() auto-commits
+
+
+@router.get("/livestream/{session_id}/auto-attribute")
+async def auto_attribute_livestream(
+    session_id: uuid.UUID,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> LiveStreamResponse:
+    """Auto-attribute orders to a livestream session based on its time window."""
+    ls = await db.scalar(
+        select(LiveStreamSession).where(
+            LiveStreamSession.id == session_id,
+            LiveStreamSession.shop_id == shop.id,
+        )
+    )
+    if not ls:
+        raise HTTPException(404, detail={"error": {"code": "NOT_FOUND"}})
+    if ls.start_time is None or ls.end_time is None:
+        raise HTTPException(
+            422,
+            detail={
+                "error": {
+                    "code": "TIME_WINDOW_MISSING",
+                    "message": "start_time và end_time phải được thiết lập trước khi auto-attribute.",
+                }
+            },
+        )
+
+    # Aggregate orders within the time window
+    # Order.created_at is from TimestampMixin; use order_date cast to timestamp for filtering
+    from sqlalchemy import cast
+    from sqlalchemy.dialects.postgresql import TIMESTAMP
+
+    agg = await db.execute(
+        select(
+            func.coalesce(func.sum(Order.gmv), Decimal("0")).label("gmv"),
+            func.count(Order.id).label("order_count"),
+        ).where(
+            Order.shop_id == shop.id,
+            cast(Order.order_date, TIMESTAMP(timezone=True)) >= ls.start_time,
+            cast(Order.order_date, TIMESTAMP(timezone=True)) <= ls.end_time,
+        )
+    )
+    row = agg.one()
+
+    # Net revenue requires fee calculation — use gmv sum as proxy here;
+    # the net_revenue col is computed, not stored directly on Order.
+    # Compute as sum of (gmv - fees) across matched orders.
+    net_agg = await db.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    Order.gmv
+                    - Order.platform_commission
+                    - Order.affiliate_commission
+                    - Order.voucher_cost
+                    - Order.shipping_subsidy
+                    - Order.refund_amount
+                    - Order.transaction_fee
+                    - Order.order_processing_fee
+                ),
+                Decimal("0"),
+            ).label("net_revenue")
+        ).where(
+            Order.shop_id == shop.id,
+            cast(Order.order_date, TIMESTAMP(timezone=True)) >= ls.start_time,
+            cast(Order.order_date, TIMESTAMP(timezone=True)) <= ls.end_time,
+        )
+    )
+    net_row = net_agg.one()
+
+    ls.attributed_gmv = Decimal(str(row.gmv))
+    ls.attributed_orders = int(row.order_count)
+    ls.attributed_net_revenue = Decimal(str(net_row.net_revenue))
+    await db.flush()
+    return _to_response(ls)

@@ -7,12 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import AuthenticatedUser, get_current_shop, get_current_user
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.gates import Feature, get_gate_value
 from app.models.shop import Shop
 from app.schemas.shop import CreateShopRequest, ShopResponse, UpdateShopRequest
 
 router = APIRouter()
+settings = get_settings()
 
 
 @router.post("/shops/onboarding", status_code=status.HTTP_201_CREATED)
@@ -118,6 +120,10 @@ async def update_shop_me(
         shop.tiktok_shop_id = body.tiktok_shop_id
     if body.category is not None:
         shop.category = body.category
+    if body.seller_phone is not None:
+        shop.seller_phone = body.seller_phone
+    if body.zns_enabled is not None:
+        shop.zns_enabled = body.zns_enabled
 
     await db.flush()
     await db.refresh(shop)
@@ -173,6 +179,12 @@ class _PushSubscriptionPayload(BaseModel):
 
 class PushSubscriptionRequest(BaseModel):
     subscription: _PushSubscriptionPayload
+
+
+@router.get("/shops/me/push-vapid-public-key")
+async def get_vapid_public_key() -> dict:
+    """Return VAPID public key browsers need to subscribe to Web Push. No auth required."""
+    return {"public_key": settings.vapid_public_key}
 
 
 @router.post("/shops/me/push-subscription", status_code=204)

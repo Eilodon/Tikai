@@ -123,3 +123,6 @@ class InsightSnapshotResponse(BaseModel):
     # True when this is the first snapshot for the shop — triggers WowScreen
     is_first_import: bool = False
     created_at: datetime
+    # CM3 fields — only populated when queried via /cm3 endpoint
+    cm3: Decimal | None = None
+    cm3_margin_pct: Decimal | None = None

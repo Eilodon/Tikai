@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     def email_enabled(self) -> bool:
         return bool(self.sendgrid_api_key)
 
+    # Web Push (VAPID)
+    vapid_private_key: str = ""
+    vapid_public_key: str = ""
+    vapid_claims_email: str = "admin@tikai.vn"
+
+    # Admin
+    admin_secret: str = ""
+
     # Sentry
     sentry_dsn: str = ""
 

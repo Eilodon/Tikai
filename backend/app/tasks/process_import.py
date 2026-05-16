@@ -127,9 +127,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # ARQ retries on SIGKILL can re-run a task that already committed orders, causing
             # duplicate rows and inflated P&L figures. Check before insert.
             existing_order_count = await db.scalar(
-                select(func.count()).select_from(Order).where(
-                    Order.import_session_id == session.id
-                )
+                select(func.count()).select_from(Order).where(Order.import_session_id == session.id)
             )
             orders_already_inserted = bool(existing_order_count and existing_order_count > 0)
 
@@ -141,9 +139,7 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 )
                 # Load existing orders for downstream insight-building
                 orders_to_insert = list(
-                    await db.scalars(
-                        select(Order).where(Order.import_session_id == session.id)
-                    )
+                    await db.scalars(select(Order).where(Order.import_session_id == session.id))
                 )
                 session.rows_parsed = len(orders_to_insert)
             else:

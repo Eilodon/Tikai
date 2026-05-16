@@ -112,8 +112,7 @@ class Settings(BaseSettings):
     def require_anthropic_api_key(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError(
-                "ANTHROPIC_API_KEY must not be empty. "
-                "Set the value from your Anthropic console."
+                "ANTHROPIC_API_KEY must not be empty. Set the value from your Anthropic console."
             )
         return v
 

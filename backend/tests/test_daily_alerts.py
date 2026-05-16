@@ -27,14 +27,17 @@ class TestBuildAlertMessage:
         assert result is None
 
     def test_leak_above_threshold_returns_message(self):
+        # L8-C01: push body must NOT contain business-specific names (lock-screen privacy)
         s = _snapshot(top_leaks=[{"name": "SKU-X", "estimated_loss": "500000"}])
         result = _build_alert_message(s)
         assert result is not None
         title, body = result
         assert "rò rỉ" in title.lower() or "phát hiện" in title.lower()
-        assert "SKU-X" in body
+        assert "SKU-X" not in body
+        assert "Tikai" in body
 
     def test_critical_sku_returns_message_when_no_big_leak(self):
+        # L8-C01: SKU name must not appear on lock screen
         s = _snapshot(
             top_leaks=[{"name": "Y", "estimated_loss": "10000"}],
             top_skus=[{"sku_name": "SKU-Y", "health_status": "critical"}],
@@ -42,9 +45,11 @@ class TestBuildAlertMessage:
         result = _build_alert_message(s)
         assert result is not None
         title, body = result
-        assert "SKU-Y" in body
+        assert "SKU-Y" not in body
+        assert "nguy hiểm" in body
 
     def test_leak_picks_max_loss(self):
+        # Max-loss selection still works even though body is generic
         s = _snapshot(
             top_leaks=[
                 {"name": "small", "estimated_loss": "100000"},
@@ -54,7 +59,8 @@ class TestBuildAlertMessage:
         result = _build_alert_message(s)
         assert result is not None
         _, body = result
-        assert "BIG" in body
+        assert "BIG" not in body
+        assert "Tikai" in body
 
     def test_threshold_value(self):
         assert ALERT_LEAK_THRESHOLD == Decimal("100000")

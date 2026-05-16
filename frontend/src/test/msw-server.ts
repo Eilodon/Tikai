@@ -30,13 +30,17 @@ export const mockActionListResponse = {
 
 export const mockInsightResponse = {
   id: "snapshot-001",
+  shop_id: "shop-001",
   period_start: "2026-05-01",
   period_end: "2026-05-07",
   gmv_total: "186000000.0000",
   net_revenue: "122500000.0000",
   total_orders: 312,
+  total_refunds: 13,
   refund_rate: "0.0420",
   cash_in_14d: "89000000.0000",
+  cash_in_30d: "142000000.0000",
+  cash_pending_total: "53000000.0000",
   top_leaks: [
     {
       type: "sku",
@@ -48,9 +52,47 @@ export const mockInsightResponse = {
       can_act_now: true,
     },
   ],
-  is_net_revenue_mode: false,
-  cogs_coverage_pct: "0.8500",
+  top_skus: [
+    {
+      sku_id: "SKU-001",
+      sku_name: "Serum Vitamin C 30ml",
+      gmv: "92000000.0000",
+      net_revenue: "61000000.0000",
+      order_count: 156,
+      total_quantity: 180,
+      refund_rate: "0.0380",
+      margin_pct: "0.1200",
+      margin: "7320000.0000",
+      gmv_rank: 1,
+      affiliate_commission: "9200000.0000",
+      voucher_cost: "4600000.0000",
+      health_status: "healthy",
+      health_reasons: [],
+    },
+  ],
+  top_creators: [
+    {
+      creator_id: "creator-001",
+      creator_name: "Creator A",
+      attributed_gmv: "55000000.0000",
+      attributed_net_revenue: "36000000.0000",
+      total_commission: "5500000.0000",
+      order_count: 88,
+      revenue_efficiency: "6.55",
+      performance_label: "good",
+      suggested_max_commission_rate: "0.08",
+      commission_on_refunded_orders: "550000.0000",
+    },
+  ],
+  action_triggers: [],
   rule_engine_version: "0.1.0",
+  fee_config_version: "v3",
+  cogs_coverage_pct: "0.8500",
+  is_net_revenue_mode: false,
+  days_in_period: 7,
+  is_partial_period: false,
+  is_first_import: false,
+  created_at: "2026-05-08T01:00:00Z",
 }
 
 // ── Default handlers ──────────────────────────────────────────────────────────

@@ -131,3 +131,44 @@ jobs:
       - name: Vitest
         run: npm run test
         working-directory: frontend
+
+  # ── Security: Dependency Audit ────────────────────────────────────────────
+  security-audit:
+    name: Security · Dependency Audit
+    runs-on: ubuntu-latest
+    # Informational — new CVEs in deps shouldn't block unrelated PRs,
+    # but must be visible and tracked. Flip continue-on-error: false when
+    # the team has a formal vulnerability management process in place.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend deps
+        run: pip install --quiet -e ".[dev]"
+        working-directory: backend
+
+      - name: pip-audit (Python CVE scan)
+        run: pip install --quiet pip-audit && pip-audit --desc
+        working-directory: backend
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+
+      - name: npm audit (JS CVE scan)
+        # --audit-level=high: only fail on high/critical; moderate findings are
+        # informational (many are in devDeps and not exploitable in production).
+        run: npm audit --audit-level=high
+        working-directory: frontend

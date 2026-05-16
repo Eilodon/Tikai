@@ -74,6 +74,8 @@ def parse_order_csv(file_bytes: bytes, original_filename: str) -> ParseResult:
                 dtype=str,
                 keep_default_na=False,
             )
+    except UnsupportedFileTypeError:
+        raise  # preserve specific ZIP-bomb messages without re-wrapping
     except Exception as e:
         raise UnsupportedFileTypeError(f"Cannot read file: {e}") from e
 

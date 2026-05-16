@@ -14,7 +14,7 @@ class TestWorkerEstimatedSavedFix:
 
         from app.tasks import worker
 
-        source = inspect.getsource(worker.run_weekly_receipts)
+        source = inspect.getsource(worker.process_weekly_receipt_for_shop)
         # Locate the WeeklyReceipt(...) constructor call and confirm
         # total_estimated_saved=total_estimated appears AFTER the AI input dict
         assert "total_estimated_saved=total_estimated," in source, (

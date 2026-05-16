@@ -15,6 +15,7 @@ def make_sku(
         gmv=Decimal("100000"),
         net_revenue=Decimal("89000"),
         order_count=10,
+        total_quantity=10,
         refund_count=0,
         refund_rate=refund_rate,
         total_cogs=cogs,

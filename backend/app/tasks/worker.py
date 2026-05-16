@@ -207,6 +207,7 @@ async def process_weekly_receipt_for_shop(ctx: dict, shop_id: str, week_label: s
         # Fire-and-forget: NEVER let email failure block receipt creation.
         # L8-H02: email digest is a Pro+ feature — skip for Free tier regardless of flag.
         from app.core.gates import Feature, get_gate_value
+
         _email_tier_ok = bool(get_gate_value(shop, Feature.ZALO_PUSH))  # Pro+ indicator
         if _email_tier_ok and shop.email_digest_enabled and shop.notification_email:
             sent = await send_weekly_digest(

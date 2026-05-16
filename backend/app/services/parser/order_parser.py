@@ -59,7 +59,10 @@ def parse_order_csv(file_bytes: bytes, original_filename: str) -> ParseResult:
                                 f"File XLSX quá lớn sau giải nén ({uncompressed // (1024 * 1024)}MB). "
                                 f"Giới hạn {_XLSX_MAX_UNCOMPRESSED_MB}MB."
                             )
-                        if compressed > 0 and uncompressed / compressed > _XLSX_MAX_COMPRESSION_RATIO:
+                        if (
+                            compressed > 0
+                            and uncompressed / compressed > _XLSX_MAX_COMPRESSION_RATIO
+                        ):
                             raise UnsupportedFileTypeError(
                                 "File XLSX có tỷ lệ nén bất thường. "
                                 "Vui lòng export lại từ TikTok Seller Center."

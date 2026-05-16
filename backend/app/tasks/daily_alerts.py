@@ -51,23 +51,16 @@ def _build_alert_message(snapshot: InsightSnapshot) -> tuple[str, str] | None:
         top_leak = max(leaks, key=lambda leak: Decimal(str(leak.get("estimated_loss", "0"))))
         loss = Decimal(str(top_leak.get("estimated_loss", "0")))
         if loss >= ALERT_LEAK_THRESHOLD:
-            leak_name = top_leak.get("name", "")
-            body = (
-                f"{leak_name} đang rò rỉ doanh thu — mở Tikai để xem chi tiết"
-                if leak_name
-                else "Phát hiện rò rỉ doanh thu — mở Tikai để xem chi tiết"
-            )
             return (
                 "⚠ Phát hiện rò rỉ doanh thu",
-                body,
+                "Phát hiện rò rỉ doanh thu — mở Tikai để xem chi tiết",
             )
 
     critical_skus = [s for s in skus if s.get("health_status") == "critical"]
     if critical_skus:
-        first = critical_skus[0]
         return (
             "⚠ SKU đang lỗ",
-            f"{first.get('sku_name', '')} ở trạng thái nguy hiểm — xem chi tiết ngay",
+            "Có SKU đang ở trạng thái nguy hiểm — xem chi tiết ngay",
         )
 
     return None

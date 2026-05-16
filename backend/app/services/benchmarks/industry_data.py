@@ -90,7 +90,11 @@ def compare_to_industry(
     results: list[BenchmarkComparison] = []
 
     # ── Refund Rate ──────────────────────────────────────────────────────────
-    benchmark_refund = refund_benchmark_override if refund_benchmark_override is not None else REFUND_RATE_BENCHMARKS[category]
+    benchmark_refund = (
+        refund_benchmark_override
+        if refund_benchmark_override is not None
+        else REFUND_RATE_BENCHMARKS[category]
+    )
     deviation = safe_divide(shop_refund_rate - benchmark_refund, benchmark_refund)
 
     if deviation < Decimal("-0.10"):
@@ -126,7 +130,11 @@ def compare_to_industry(
 
     # ── Margin ───────────────────────────────────────────────────────────────
     if shop_margin_pct is not None:
-        benchmark_margin = margin_benchmark_override if margin_benchmark_override is not None else MARGIN_BENCHMARKS[category]
+        benchmark_margin = (
+            margin_benchmark_override
+            if margin_benchmark_override is not None
+            else MARGIN_BENCHMARKS[category]
+        )
         margin_deviation = safe_divide(shop_margin_pct - benchmark_margin, benchmark_margin)
 
         if margin_deviation > Decimal("0.10"):
@@ -162,7 +170,11 @@ def compare_to_industry(
 
     # ── Fee Burden ───────────────────────────────────────────────────────────
     if shop_fee_burden_pct is not None:
-        benchmark_fee = fee_benchmark_override if fee_benchmark_override is not None else AVG_FEE_BURDEN[category]
+        benchmark_fee = (
+            fee_benchmark_override
+            if fee_benchmark_override is not None
+            else AVG_FEE_BURDEN[category]
+        )
         fee_deviation = safe_divide(shop_fee_burden_pct - benchmark_fee, benchmark_fee)
 
         if fee_deviation < Decimal("-0.10"):

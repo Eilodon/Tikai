@@ -864,7 +864,9 @@ async def get_creator_cohort(
     if any(i not in found_ids for i in parsed_ids):
         raise HTTPException(
             404,
-            detail={"error": {"code": "PERIODS_NOT_FOUND", "message": "One or more periods not found."}},
+            detail={
+                "error": {"code": "PERIODS_NOT_FOUND", "message": "One or more periods not found."}
+            },
         )
 
     # Build period-keyed summaries from stored JSON

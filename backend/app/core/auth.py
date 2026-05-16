@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC
 from typing import Annotated
 
+import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -19,6 +20,7 @@ from app.models.shop import Shop
 
 settings = get_settings()
 bearer_scheme = HTTPBearer(auto_error=False)
+log = structlog.get_logger()
 
 
 class AuthenticatedUser:
@@ -32,6 +34,7 @@ async def get_current_user(
 ) -> AuthenticatedUser:
     """Validate Supabase JWT. Returns AuthenticatedUser or raises 401."""
     if not credentials:
+        log.warning("auth.no_credentials")  # L10-M01
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -54,7 +57,8 @@ async def get_current_user(
         if user_id is None:
             raise ValueError("No sub in token")
         return AuthenticatedUser(user_id=uuid.UUID(user_id), email=email)
-    except (JWTError, ValueError):
+    except (JWTError, ValueError) as exc:
+        log.warning("auth.jwt_invalid", reason=type(exc).__name__)  # L10-M01
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -97,4 +101,5 @@ async def get_current_shop(
             shop.subscription_tier = "free"
             shop.trial_expires_at = None
             await db.flush()  # S-2: flush only — commit happens when request ends
+            await db.refresh(shop)  # L1-M02: reload flushed state to avoid stale reads
     return shop

@@ -9,8 +9,13 @@ For each active shop with push_subscription_json:
 
 INVARIANT: never raises — fire-and-forget. One shop failing must not affect others.
 Budget guard: send at most 1 push per shop per 24h (idempotency via Redis key TTL).
+
+L6-H01: shops are loaded in pages of PAGE_SIZE (not all at once) and each page is
+processed with bounded parallelism (semaphore MAX_CONCURRENT) to avoid OOM on large
+shop counts while still finishing within the cron window.
 """
 
+import asyncio
 from decimal import Decimal
 
 import structlog
@@ -23,6 +28,8 @@ from app.services.push.web_push import send_push_to_shop
 log = structlog.get_logger()
 
 ALERT_LEAK_THRESHOLD = Decimal("100000")
+_PAGE_SIZE = 100
+_MAX_CONCURRENT = 10
 
 
 async def _shop_was_alerted_today(shop_id: str, redis) -> bool:
@@ -72,56 +79,75 @@ async def trigger_daily_alerts(ctx: dict) -> None:
 
     AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
     redis = await get_redis()
+    semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 
-    async with AsyncSessionLocal() as db:
-        shops = list(
-            await db.scalars(
-                select(Shop).where(
-                    Shop.is_active == True,  # noqa: E712
-                    Shop.push_subscription_json.isnot(None),
-                )
-            )
-        )
-
-    total = len(shops)
+    total = 0
     sent_count = 0
     skipped_dup = 0
     skipped_no_signal = 0
     failed = 0
 
-    for shop in shops:
-        try:
-            if await _shop_was_alerted_today(str(shop.id), redis):
-                skipped_dup += 1
-                continue
+    async def _process_one(shop: Shop) -> tuple[int, int, int, int]:
+        """Returns (sent, skipped_dup, skipped_no_signal, failed)."""
+        async with semaphore:
+            try:
+                if await _shop_was_alerted_today(str(shop.id), redis):
+                    return (0, 1, 0, 0)
 
-            async with AsyncSessionLocal() as db:
-                snapshot = await db.scalar(
-                    select(InsightSnapshot)
-                    .where(InsightSnapshot.shop_id == shop.id)
-                    .order_by(InsightSnapshot.period_end.desc())
-                    .limit(1)
+                async with AsyncSessionLocal() as db:
+                    snapshot = await db.scalar(
+                        select(InsightSnapshot)
+                        .where(InsightSnapshot.shop_id == shop.id)
+                        .order_by(InsightSnapshot.period_end.desc())
+                        .limit(1)
+                    )
+
+                if not snapshot:
+                    return (0, 0, 1, 0)
+
+                msg = _build_alert_message(snapshot)
+                if msg is None:
+                    return (0, 0, 1, 0)
+
+                title, body = msg
+                success = await send_push_to_shop(shop, title=title, body=body, url="/overview")
+                if success:
+                    await _mark_shop_alerted(str(shop.id), redis)
+                    return (1, 0, 0, 0)
+                return (0, 0, 0, 1)
+            except Exception as e:
+                log.warning("daily_alert.shop_failed", shop_id=str(shop.id), error=str(e))
+                return (0, 0, 0, 1)
+
+    # Paginate shops to avoid loading all into memory at once (L6-H01)
+    offset = 0
+    while True:
+        async with AsyncSessionLocal() as db:
+            page = list(
+                await db.scalars(
+                    select(Shop)
+                    .where(
+                        Shop.is_active == True,  # noqa: E712
+                        Shop.push_subscription_json.isnot(None),
+                    )
+                    .order_by(Shop.id)
+                    .limit(_PAGE_SIZE)
+                    .offset(offset)
                 )
+            )
 
-            if not snapshot:
-                skipped_no_signal += 1
-                continue
+        if not page:
+            break
 
-            msg = _build_alert_message(snapshot)
-            if msg is None:
-                skipped_no_signal += 1
-                continue
+        total += len(page)
+        results = await asyncio.gather(*[_process_one(s) for s in page])
+        for s, d, ns, f in results:
+            sent_count += s
+            skipped_dup += d
+            skipped_no_signal += ns
+            failed += f
 
-            title, body = msg
-            success = await send_push_to_shop(shop, title=title, body=body, url="/overview")
-            if success:
-                await _mark_shop_alerted(str(shop.id), redis)
-                sent_count += 1
-            else:
-                failed += 1
-        except Exception as e:
-            log.warning("daily_alert.shop_failed", shop_id=str(shop.id), error=str(e))
-            failed += 1
+        offset += _PAGE_SIZE
 
     log.info(
         "daily_alerts.complete",

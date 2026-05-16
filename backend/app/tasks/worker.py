@@ -205,7 +205,10 @@ async def process_weekly_receipt_for_shop(ctx: dict, shop_id: str, week_label: s
 
         # ── Email digest ─────────────────────────────────────────────────
         # Fire-and-forget: NEVER let email failure block receipt creation.
-        if shop.email_digest_enabled and shop.notification_email:
+        # L8-H02: email digest is a Pro+ feature — skip for Free tier regardless of flag.
+        from app.core.gates import Feature, get_gate_value
+        _email_tier_ok = bool(get_gate_value(shop, Feature.ZALO_PUSH))  # Pro+ indicator
+        if _email_tier_ok and shop.email_digest_enabled and shop.notification_email:
             sent = await send_weekly_digest(
                 to_email=shop.notification_email,
                 shop_name=shop.shop_name,
@@ -309,3 +312,6 @@ class WorkerSettings:
     max_jobs = 10
     job_timeout = 300
     keep_result = 3600
+    # L7-H03: retry failed jobs once on transient errors (e.g. DB unavailable, SIGKILL).
+    # process_import is idempotent (idempotency check at step 4) so retries are safe.
+    max_tries = 2

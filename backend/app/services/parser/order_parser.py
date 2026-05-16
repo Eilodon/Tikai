@@ -7,6 +7,7 @@ Raises UnsupportedFileTypeError only when the file cannot be read at all.
 """
 
 import io
+import zipfile
 
 import chardet
 import pandas as pd
@@ -23,6 +24,9 @@ from app.services.parser.normalizer import (
 )
 
 log = structlog.get_logger()
+
+_XLSX_MAX_UNCOMPRESSED_MB = 50
+_XLSX_MAX_COMPRESSION_RATIO = 100
 
 REQUIRED_FOR_FULL = {"tiktok_order_id", "gmv", "order_date"}
 REQUIRED_FOR_FEES = {"platform_commission", "affiliate_commission", "voucher_cost"}
@@ -43,6 +47,25 @@ def parse_order_csv(file_bytes: bytes, original_filename: str) -> ParseResult:
     # 2. Read file
     try:
         if original_filename.lower().endswith((".xlsx", ".xls")):
+            # L1-H01: ZIP bomb guard — XLSX is a ZIP archive; check ratio before decompressing.
+            # XLS (legacy binary format) is not a zip, so skip the check for it.
+            if original_filename.lower().endswith(".xlsx"):
+                try:
+                    with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+                        uncompressed = sum(zi.file_size for zi in zf.infolist())
+                        compressed = len(file_bytes)
+                        if uncompressed > _XLSX_MAX_UNCOMPRESSED_MB * 1024 * 1024:
+                            raise UnsupportedFileTypeError(
+                                f"File XLSX quá lớn sau giải nén ({uncompressed // (1024 * 1024)}MB). "
+                                f"Giới hạn {_XLSX_MAX_UNCOMPRESSED_MB}MB."
+                            )
+                        if compressed > 0 and uncompressed / compressed > _XLSX_MAX_COMPRESSION_RATIO:
+                            raise UnsupportedFileTypeError(
+                                "File XLSX có tỷ lệ nén bất thường. "
+                                "Vui lòng export lại từ TikTok Seller Center."
+                            )
+                except zipfile.BadZipFile:
+                    raise UnsupportedFileTypeError("File XLSX không hợp lệ (định dạng ZIP bị lỗi).")
             df = pd.read_excel(io.BytesIO(file_bytes), dtype=str)
         else:
             df = pd.read_csv(

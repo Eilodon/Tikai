@@ -741,6 +741,20 @@ async def get_price_floors(
 # ── CSV Export ────────────────────────────────────────────────────────────────
 
 
+def _safe_csv_cell(value: object) -> str:
+    """Sanitize a cell value to prevent CSV formula injection.
+
+    Spreadsheet applications (Excel, Google Sheets) evaluate cells starting
+    with '=', '+', '-', '@', '\\t', or '\\r' as formulas, enabling data
+    exfiltration via crafted SKU names (e.g. '=HYPERLINK(...)').
+    Prefix with a single quote to force string interpretation.
+    """
+    s = str(value) if value is not None else ""
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+        return "'" + s
+    return s
+
+
 @router.get("/insights/{snapshot_id}/export.csv")
 async def export_snapshot_csv(
     snapshot_id: uuid.UUID,
@@ -789,8 +803,8 @@ async def export_snapshot_csv(
         margin_pct = f"{float(s.margin_pct) * 100:.1f}" if s.margin_pct is not None else ""
         writer.writerow(
             [
-                s.sku_id,
-                s.sku_name,
+                _safe_csv_cell(s.sku_id),
+                _safe_csv_cell(s.sku_name),
                 str(s.gmv),
                 str(s.net_revenue),
                 s.order_count,
@@ -798,7 +812,7 @@ async def export_snapshot_csv(
                 refund_pct,
                 str(s.margin) if s.margin is not None else "",
                 margin_pct,
-                s.health_status,
+                _safe_csv_cell(s.health_status),
                 str(s.affiliate_commission),
                 str(s.voucher_cost),
             ]

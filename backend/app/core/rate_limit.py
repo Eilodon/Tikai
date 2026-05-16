@@ -7,10 +7,18 @@ main.py also imports from here and registers it on the FastAPI app.
 This fixes a circular import: routers like insights.py needed @limiter.limit()
 but importing from app.main caused chicken-and-egg (main.py imports routers,
 routers import main.py).
+
+RELIABILITY: swallow_errors=True means Redis unavailability is fail-open:
+requests pass through instead of being 429-blocked. A WARNING is emitted so
+ops can alert on Redis connectivity without impacting users.
 """
+
+import logging
 
 from slowapi import Limiter
 from starlette.requests import Request
+
+_log = logging.getLogger(__name__)
 
 
 def _get_real_ip(request: Request) -> str:
@@ -29,4 +37,32 @@ def _get_real_ip(request: Request) -> str:
 # Individual routers can override with shop_id-based limits if needed.
 # DESIGN: Per-IP avoids complex Redis key management; per-shop requires
 # auth + lookup on every request. Post-launch optimization if abuse detected.
-limiter = Limiter(key_func=_get_real_ip, default_limits=["200/minute"])
+#
+# swallow_errors=True: if Redis is unreachable, fail-open (allow requests through)
+# instead of fail-closed (blocking all users with 429). slowapi logs an exception;
+# we additionally emit a WARNING so structured-log alerting can fire.
+limiter = Limiter(
+    key_func=_get_real_ip,
+    default_limits=["200/minute"],
+    swallow_errors=True,
+)
+
+# Patch the limiter logger so Redis errors also surface as WARNING in our log pipeline.
+# slowapi uses logger.exception() internally when swallow_errors=True; we add our own
+# handler to emit a structured WARNING at the module level.
+_original_limiter_logger = limiter.logger
+
+
+class _FailOpenLoggingHandler(logging.Handler):
+    """Re-emits slowapi storage errors as WARNING so alerting rules can match them."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno >= logging.ERROR:
+            _log.warning(
+                "rate_limit.redis_unavailable — fail-open, requests are passing through: %s",
+                record.getMessage(),
+            )
+
+
+_FailOpenLoggingHandler.__name__ = "FailOpenLoggingHandler"
+limiter.logger.addHandler(_FailOpenLoggingHandler())

@@ -87,6 +87,47 @@ class Settings(BaseSettings):
     # Sentry
     sentry_dsn: str = ""
 
+    @field_validator("supabase_jwt_secret", mode="after")
+    @classmethod
+    def require_supabase_jwt_secret(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError(
+                "SUPABASE_JWT_SECRET must not be empty. "
+                "Set the value from your Supabase project settings."
+            )
+        return v
+
+    @field_validator("supabase_service_role_key", mode="after")
+    @classmethod
+    def require_supabase_service_role_key(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError(
+                "SUPABASE_SERVICE_ROLE_KEY must not be empty. "
+                "Set the value from your Supabase project settings."
+            )
+        return v
+
+    @field_validator("anthropic_api_key", mode="after")
+    @classmethod
+    def require_anthropic_api_key(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError(
+                "ANTHROPIC_API_KEY must not be empty. "
+                "Set the value from your Anthropic console."
+            )
+        return v
+
+    @field_validator("admin_secret", mode="after")
+    @classmethod
+    def validate_admin_secret(cls, v: str) -> str:
+        # Allow empty string — admin endpoints are optional.
+        # If a value is provided, it must be at least 16 chars to be meaningful.
+        if v and len(v) < 16:
+            raise ValueError(
+                "ADMIN_SECRET must be at least 16 characters long (or left empty to disable admin endpoints)."
+            )
+        return v
+
     @field_validator("sentry_dsn", mode="after")
     @classmethod
     def require_sentry_in_production(cls, v: str, info: "FieldValidationInfo") -> str:
@@ -118,12 +159,12 @@ class Settings(BaseSettings):
     @field_validator("allowed_origins", mode="after")
     @classmethod
     def require_production_origins(cls, v: list[str], info: "FieldValidationInfo") -> list[str]:
-        """F-02: Fail fast if allowed_origins still points to localhost in production.
+        """F-02: Fail fast if allowed_origins still points to localhost in production or staging.
         Prevents the common mistake of forgetting to set ALLOWED_ORIGINS in Railway env."""
         env = info.data.get("environment", "development")
-        if env == "production" and any("localhost" in o for o in v):
+        if env in ("production", "staging") and any("localhost" in o for o in v):
             raise ValueError(
-                "ALLOWED_ORIGINS still contains localhost in production. "
+                f"ALLOWED_ORIGINS still contains localhost in {env}. "
                 'Set ALLOWED_ORIGINS=["https://app.tikai.vn"] in Railway environment variables.'
             )
         return v

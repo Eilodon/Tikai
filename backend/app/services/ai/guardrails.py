@@ -5,6 +5,7 @@ INVARIANT: mọi số trong AI text phải trace về source_json.
 
 import copy
 import re
+import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -181,7 +182,11 @@ def validate_numbers_in_text(
 
 def detect_injection(text: str) -> bool:
     """Return True if text contains prompt injection patterns."""
-    text_lower = text.lower()
+    # Unicode normalization: collapse homoglyph attacks and strip zero-width chars
+    # before pattern matching so obfuscated payloads are detected correctly.
+    normalized = unicodedata.normalize("NFKC", text)
+    normalized = re.sub(r"[​‌‍﻿­]", "", normalized)
+    text_lower = normalized.lower()
     return any(re.search(pattern, text_lower, re.IGNORECASE) for pattern in INJECTION_PATTERNS)
 
 

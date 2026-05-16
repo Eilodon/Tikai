@@ -156,6 +156,46 @@ async def upsert_cogs(
 # ── Bulk CSV Import ───────────────────────────────────────────────────────────
 
 
+def _parse_decimal(raw: str) -> Decimal:
+    """Parse a locale-aware decimal string to Decimal.
+
+    Handles:
+    - US format:     "1,234.56"  → 1234.56
+    - European format: "1.234,56" → 1234.56
+    - Plain:         "123456"    → 123456
+    - No separator:  "1234.56"   → 1234.56
+
+    Rule: if both '.' and ',' appear, the last one is the decimal separator.
+    If only ',' appears: if it splits into exactly two parts where the right
+    part is NOT 3 digits, treat it as decimal; otherwise treat as thousands.
+    """
+    # Remove spaces and non-breaking spaces
+    s = raw.strip().replace(" ", "").replace(" ", "")
+    if not s:
+        raise InvalidOperation("empty string")
+
+    if "," in s and "." in s:
+        # Both present: last character wins as decimal separator
+        if s.rfind(",") > s.rfind("."):
+            # European: "1.234,56" → remove dots, replace comma with dot
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            # US: "1,234.56" → remove commas
+            s = s.replace(",", "")
+    elif "," in s:
+        # Comma only: check if it's a decimal separator or thousands separator
+        parts = s.split(",")
+        if len(parts) == 2 and len(parts[1]) != 3:
+            # "1234,56" or "1,5" — comma is decimal separator
+            s = s.replace(",", ".")
+        else:
+            # "1,234" or "1,234,567" — comma is thousands separator
+            s = s.replace(",", "")
+    # else: dot only or no separator — keep as-is
+
+    return Decimal(s)
+
+
 class COGSBulkImportResponse(BaseModel):
     updated: int
     skipped: int
@@ -225,17 +265,17 @@ async def bulk_import_cogs(
             break
 
         sku_id = str(row.get(sku_col, "")).strip()
-        raw_cogs = str(row.get(cogs_col, "")).strip().replace(",", "").replace(".", "")
+        raw_cogs_str = str(row.get(cogs_col, "")).strip()
         if not sku_id:
             skipped += 1
             continue
         try:
-            cogs_val = Decimal(raw_cogs)
+            cogs_val = _parse_decimal(raw_cogs_str)
             if cogs_val <= 0:
                 raise ValueError("must be positive")
         except (InvalidOperation, ValueError):
             errors.append(
-                f"Dòng {i}: SKU '{sku_id}' — giá trị '{raw_cogs}' không hợp lệ (cần số dương)."
+                f"Dòng {i}: SKU '{sku_id}' — giá trị '{raw_cogs_str}' không hợp lệ (cần số dương VND)."
             )
             skipped += 1
             continue

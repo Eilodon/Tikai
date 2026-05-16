@@ -29,7 +29,7 @@ from datetime import date
 from decimal import Decimal
 
 import structlog
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
@@ -122,37 +122,62 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # so Shopee orders were silently stored as "tiktok" without this field.
             # That broke ix_orders_shop_id_platform and all per-platform P&L queries.
             _order_platform = parse_result.platform  # "tiktok" | "shopee" | "unknown"
-            orders_to_insert = [
-                Order(
-                    shop_id=session.shop_id,
-                    import_session_id=session.id,
-                    tiktok_order_id=row.tiktok_order_id,
-                    sku_id=row.sku_id,
-                    sku_name=row.sku_name,
-                    creator_id=row.creator_id,
-                    creator_name=row.creator_name,
-                    gmv=row.gmv,
-                    platform_commission=row.platform_commission,
-                    affiliate_commission=row.affiliate_commission,
-                    voucher_cost=row.voucher_cost,
-                    shipping_subsidy=row.shipping_subsidy,
-                    refund_amount=row.refund_amount,
-                    transaction_fee=row.transaction_fee,
-                    order_processing_fee=row.order_processing_fee,
-                    quantity=row.quantity,
-                    order_date=row.order_date,
-                    status=row.status,
-                    refund_reason_raw=row.refund_reason_raw,
-                    platform=_order_platform,  # FIX v2.0.1: was missing → all Shopee = "tiktok"
+
+            # Idempotency: if orders already exist for this session (job retry), skip insertion.
+            # ARQ retries on SIGKILL can re-run a task that already committed orders, causing
+            # duplicate rows and inflated P&L figures. Check before insert.
+            existing_order_count = await db.scalar(
+                select(func.count()).select_from(Order).where(
+                    Order.import_session_id == session.id
                 )
-                for row in parse_result.rows
-            ]
-            db.add_all(orders_to_insert)
-            session.rows_parsed = len(orders_to_insert)
-            # v2.0.0: track platform on import_session (for import history badge)
-            if hasattr(session, "platform"):
-                session.platform = _order_platform
-            await db.flush()
+            )
+            orders_already_inserted = bool(existing_order_count and existing_order_count > 0)
+
+            if orders_already_inserted:
+                log.info(
+                    "process_import.idempotent_skip",
+                    session_id=session_id,
+                    existing_orders=existing_order_count,
+                )
+                # Load existing orders for downstream insight-building
+                orders_to_insert = list(
+                    await db.scalars(
+                        select(Order).where(Order.import_session_id == session.id)
+                    )
+                )
+                session.rows_parsed = len(orders_to_insert)
+            else:
+                orders_to_insert = [
+                    Order(
+                        shop_id=session.shop_id,
+                        import_session_id=session.id,
+                        tiktok_order_id=row.tiktok_order_id,
+                        sku_id=row.sku_id,
+                        sku_name=row.sku_name,
+                        creator_id=row.creator_id,
+                        creator_name=row.creator_name,
+                        gmv=row.gmv,
+                        platform_commission=row.platform_commission,
+                        affiliate_commission=row.affiliate_commission,
+                        voucher_cost=row.voucher_cost,
+                        shipping_subsidy=row.shipping_subsidy,
+                        refund_amount=row.refund_amount,
+                        transaction_fee=row.transaction_fee,
+                        order_processing_fee=row.order_processing_fee,
+                        quantity=row.quantity,
+                        order_date=row.order_date,
+                        status=row.status,
+                        refund_reason_raw=row.refund_reason_raw,
+                        platform=_order_platform,  # FIX v2.0.1: was missing → all Shopee = "tiktok"
+                    )
+                    for row in parse_result.rows
+                ]
+                db.add_all(orders_to_insert)
+                session.rows_parsed = len(orders_to_insert)
+                # v2.0.0: track platform on import_session (for import history badge)
+                if hasattr(session, "platform"):
+                    session.platform = _order_platform
+                await db.flush()
 
             # 5. Load FeeConfig — per-order lookup across the full import period.
             # Load ALL configs that overlap [period_start, period_end] so orders placed

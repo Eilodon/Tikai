@@ -155,9 +155,20 @@ async def get_insight_history(
     weeks: int = Query(4, ge=1, le=52),
 ) -> list[InsightSnapshotResponse]:
     """Return last N weeks of snapshots (oldest first) for trend comparison."""
-    # FIX GAP-M6: cap weeks to tier limit
+    # L5-M01: reject requests that exceed the tier limit (was silently capping)
     max_weeks = get_history_weeks_limit(shop)
-    weeks = min(weeks, max_weeks)
+    if weeks > max_weeks:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "WEEKS_EXCEEDS_TIER_LIMIT",
+                    "message": f"Gói hiện tại chỉ hỗ trợ tối đa {max_weeks} tuần lịch sử. Nâng cấp tại /settings/billing.",
+                    "max_weeks": max_weeks,
+                    "upgrade_url": "/settings/billing",
+                }
+            },
+        )
 
     rows = await db.scalars(
         select(InsightSnapshot)
@@ -253,38 +264,17 @@ async def get_benchmark(
     bench_margin = await _redis_override("margin_pct", MARGIN_BENCHMARKS[category])
     bench_fee = await _redis_override("fee_burden_pct", AVG_FEE_BURDEN[category])
 
-    # Temporarily patch industry data with Redis overrides for comparison
-    import copy
-
-    patched_refund = copy.copy(REFUND_RATE_BENCHMARKS)
-    patched_refund[category] = bench_refund
-    patched_margin = copy.copy(MARGIN_BENCHMARKS)
-    patched_margin[category] = bench_margin
-    patched_fee = copy.copy(AVG_FEE_BURDEN)
-    patched_fee[category] = bench_fee
-
-    import app.services.benchmarks.industry_data as _ind
-
-    orig_r, orig_m, orig_f = (
-        _ind.REFUND_RATE_BENCHMARKS,
-        _ind.MARGIN_BENCHMARKS,
-        _ind.AVG_FEE_BURDEN,
+    # L12-M01: pass overrides as kwargs instead of monkey-patching module globals,
+    # which caused a race condition under concurrent requests.
+    comparisons = compare_to_industry(
+        shop_refund_rate=snapshot.refund_rate,
+        shop_margin_pct=shop_margin_pct,
+        shop_fee_burden_pct=shop_fee_burden_pct,
+        category=category,
+        refund_benchmark_override=bench_refund,
+        margin_benchmark_override=bench_margin,
+        fee_benchmark_override=bench_fee,
     )
-    _ind.REFUND_RATE_BENCHMARKS = patched_refund  # type: ignore[assignment]
-    _ind.MARGIN_BENCHMARKS = patched_margin  # type: ignore[assignment]
-    _ind.AVG_FEE_BURDEN = patched_fee  # type: ignore[assignment]
-
-    try:
-        comparisons = compare_to_industry(
-            shop_refund_rate=snapshot.refund_rate,
-            shop_margin_pct=shop_margin_pct,
-            shop_fee_burden_pct=shop_fee_burden_pct,
-            category=category,
-        )
-    finally:
-        _ind.REFUND_RATE_BENCHMARKS = orig_r  # type: ignore[assignment]
-        _ind.MARGIN_BENCHMARKS = orig_m  # type: ignore[assignment]
-        _ind.AVG_FEE_BURDEN = orig_f  # type: ignore[assignment]
 
     from datetime import date
 
@@ -741,6 +731,20 @@ async def get_price_floors(
 # ── CSV Export ────────────────────────────────────────────────────────────────
 
 
+def _safe_csv_cell(value: object) -> str:
+    """Sanitize a cell value to prevent CSV formula injection.
+
+    Spreadsheet applications (Excel, Google Sheets) evaluate cells starting
+    with '=', '+', '-', '@', '\\t', or '\\r' as formulas, enabling data
+    exfiltration via crafted SKU names (e.g. '=HYPERLINK(...)').
+    Prefix with a single quote to force string interpretation.
+    """
+    s = str(value) if value is not None else ""
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+        return "'" + s
+    return s
+
+
 @router.get("/insights/{snapshot_id}/export.csv")
 async def export_snapshot_csv(
     snapshot_id: uuid.UUID,
@@ -789,8 +793,8 @@ async def export_snapshot_csv(
         margin_pct = f"{float(s.margin_pct) * 100:.1f}" if s.margin_pct is not None else ""
         writer.writerow(
             [
-                s.sku_id,
-                s.sku_name,
+                _safe_csv_cell(s.sku_id),
+                _safe_csv_cell(s.sku_name),
                 str(s.gmv),
                 str(s.net_revenue),
                 s.order_count,
@@ -798,7 +802,7 @@ async def export_snapshot_csv(
                 refund_pct,
                 str(s.margin) if s.margin is not None else "",
                 margin_pct,
-                s.health_status,
+                _safe_csv_cell(s.health_status),
                 str(s.affiliate_commission),
                 str(s.voucher_cost),
             ]
@@ -833,6 +837,7 @@ async def get_creator_cohort(
     period_ids: str = Query(..., description="Comma-separated snapshot UUIDs (max 8)"),
 ) -> list[dict]:
     """Compare creator performance across multiple snapshot periods."""
+    require_feature(shop, Feature.CREATOR_CRM)  # L8-H01: gate enforced
     raw_ids = [p.strip() for p in period_ids.split(",") if p.strip()]
     if not raw_ids:
         raise HTTPException(422, detail={"error": {"code": "MISSING_PERIOD_IDS"}})
@@ -854,13 +859,12 @@ async def get_creator_cohort(
     )
     snapshot_list = list(snapshots)
 
-    # Verify all requested IDs belong to this shop
+    # Verify all requested IDs belong to this shop — L1-M01: no UUID list in error (enumeration risk)
     found_ids = {s.id for s in snapshot_list}
-    missing = [str(i) for i in parsed_ids if i not in found_ids]
-    if missing:
+    if any(i not in found_ids for i in parsed_ids):
         raise HTTPException(
             404,
-            detail={"error": {"code": "NOT_FOUND", "missing": missing}},
+            detail={"error": {"code": "PERIODS_NOT_FOUND", "message": "One or more periods not found."}},
         )
 
     # Build period-keyed summaries from stored JSON

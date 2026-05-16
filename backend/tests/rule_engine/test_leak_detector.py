@@ -26,6 +26,7 @@ def make_sku(
         gmv=gmv,
         net_revenue=net_revenue,
         order_count=10,
+        total_quantity=10,
         refund_count=0,
         refund_rate=refund_rate,
         total_cogs=Decimal("50000") if margin is not None else None,

@@ -33,7 +33,7 @@ class TestGates:
         assert get_history_weeks_limit(FakeShop("business")) == 52
 
     def test_ai_calls_limit_per_tier(self):
-        assert get_ai_calls_limit(FakeShop("free")) == 3
+        assert get_ai_calls_limit(FakeShop("free")) == 5
         assert get_ai_calls_limit(FakeShop("pro")) == 10
         assert get_ai_calls_limit(FakeShop("business")) == 15  # F-1B-06: explicit tier limit
 

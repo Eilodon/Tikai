@@ -146,19 +146,23 @@ class TestApplyFeeConfigEstimation:
 
 
 class TestProcessImportTopLevelImports:
-    """FIX v1.0.0: get_ai_calls_limit imported at module level (was lazy import inside function)."""
+    """FIX v1.0.0: AI call limits use module-level settings (was lazy import inside function)."""
 
     def test_get_ai_calls_limit_at_module_level(self):
         from app.tasks import process_import as pm_module
 
         source = inspect.getsource(pm_module)
-        # Should be at module level (before any function definition)
-        import_idx = source.find("from app.core.gates import get_ai_calls_limit")
+        # Should use tier-based limits at module level via settings
+        # (v1.0.0: explicit per-tier limits replaced lazy get_ai_calls_limit import)
         first_async_def = source.find("async def ")
-        assert import_idx != -1, "get_ai_calls_limit import missing from process_import.py"
-        assert import_idx < first_async_def, (
-            "get_ai_calls_limit must be imported at module level, not inside function body. "
-            "Lazy imports inside async functions add overhead per call."
+        settings_import_idx = source.find("from app.core.config import get_settings")
+        assert settings_import_idx != -1, "get_settings import missing from process_import.py"
+        assert settings_import_idx < first_async_def, (
+            "get_settings must be imported at module level, not inside function body."
+        )
+        # Verify tier-based AI limit logic exists in the module
+        assert "ai_max_calls_per_import_free" in source, (
+            "process_import.py must use tier-based AI call limits (ai_max_calls_per_import_free)"
         )
 
 
@@ -168,10 +172,10 @@ class TestWorkerNoDoubleImport:
     def test_no_duplicate_datetime_import_in_loop(self):
         from app.tasks import worker
 
-        source = inspect.getsource(worker.run_weekly_receipts)
+        source = inspect.getsource(worker.process_weekly_receipt_for_shop)
         import_count = source.count("from datetime import")
         assert import_count == 0, (
-            f"run_weekly_receipts has {import_count} inline 'from datetime import' "
+            f"process_weekly_receipt_for_shop has {import_count} inline 'from datetime import' "
             "statement(s). Imports should be at module level, not inside function/loop. "
             "v1.0.0 fix moved datetime to top of worker.py."
         )
@@ -252,7 +256,7 @@ class TestVersionString:
     def test_app_version_is_current(self):
         from app.main import APP_VERSION
 
-        assert APP_VERSION == "2.0.2", (
-            f"APP_VERSION must be '2.0.2' (current release). Got {APP_VERSION!r}. "
+        assert APP_VERSION == "2.2.0", (
+            f"APP_VERSION must be '2.2.0' (current release). Got {APP_VERSION!r}. "
             "Bump APP_VERSION in main.py on every release."
         )

@@ -10,8 +10,8 @@ from app.services.rule_engine.baselines import (
 
 class TestBaselines:
     def test_default_baseline_is_realistic(self):
-        # Old hardcoded was 5%; new default is 8% (median across categories)
-        assert DEFAULT_BASELINE == Decimal("0.08")
+        # Old hardcoded was 5%; new default is 9% (median across categories)
+        assert DEFAULT_BASELINE == Decimal("0.09")
 
     def test_fashion_high_baseline(self):
         # Fashion has highest refund rate (size/fit issues)

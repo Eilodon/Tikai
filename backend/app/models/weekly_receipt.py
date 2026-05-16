@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -46,4 +46,8 @@ class WeeklyReceipt(Base, TimestampMixin):
 
     shop: Mapped[Shop] = relationship(back_populates="weekly_receipts")  # noqa: F821
 
-    __table_args__ = (Index("ix_weekly_receipts_shop_id", "shop_id"),)
+    __table_args__ = (
+        # Prevent duplicate receipts from concurrent cron workers (migration 0017)
+        UniqueConstraint("shop_id", "period_label", name="uq_weekly_receipts_shop_period"),
+        Index("ix_weekly_receipts_shop_id", "shop_id"),
+    )

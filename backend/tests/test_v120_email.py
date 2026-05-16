@@ -110,10 +110,10 @@ class TestWorkerEmailWiring:
     def test_worker_dispatches_email_after_receipt_flush(self):
         from app.tasks import worker
 
-        source = inspect.getsource(worker.run_weekly_receipts)
+        source = inspect.getsource(worker.process_weekly_receipt_for_shop)
         # email dispatch must be AFTER the receipt flush/save
         email_idx = source.find("send_weekly_digest")
-        assert email_idx > 0, "send_weekly_digest call not found in run_weekly_receipts"
+        assert email_idx > 0, "send_weekly_digest call not found in process_weekly_receipt_for_shop"
         # Email dispatch should be after first flush (receipt save)
         assert email_idx > source.find("db.add(receipt)"), (
             "Email dispatch must come AFTER receipt is saved to DB"
@@ -122,7 +122,7 @@ class TestWorkerEmailWiring:
     def test_worker_checks_email_enabled_flag(self):
         from app.tasks import worker
 
-        source = inspect.getsource(worker.run_weekly_receipts)
+        source = inspect.getsource(worker.process_weekly_receipt_for_shop)
         assert "email_digest_enabled" in source, (
             "Worker must check shop.email_digest_enabled before sending email"
         )

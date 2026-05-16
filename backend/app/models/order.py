@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Index, Integer, Numeric, String
+from sqlalchemy import Date, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -79,6 +79,8 @@ class Order(Base, TimestampMixin):
 
     # Indexes for common queries
     __table_args__ = (
+        # Prevent duplicate orders on ARQ job retry (migration 0016)
+        UniqueConstraint("shop_id", "tiktok_order_id", name="uq_orders_shop_tiktok_id"),
         Index("ix_orders_shop_id_order_date", "shop_id", "order_date"),
         Index("ix_orders_shop_id_sku_id", "shop_id", "sku_id"),
         Index("ix_orders_shop_id_creator_id", "shop_id", "creator_id"),

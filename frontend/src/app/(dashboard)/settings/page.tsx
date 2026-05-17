@@ -126,31 +126,52 @@ function COGSTable({ token }: { token: string }) {
             <tr>
               <th className="text-left px-4 py-2.5 font-medium text-gray-600">SKU</th>
               <th className="text-right px-4 py-2.5 font-medium text-gray-600 w-48">Giá vốn / đơn vị (VND)</th>
+              <th className="text-right px-3 py-2.5 font-medium text-gray-600 w-24">Gross ≈</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {rows.map((row) => (
-              <tr key={row.sku_id} className={row.dirty ? "bg-amber-50" : "hover:bg-gray-50"}>
-                <td className="px-4 py-2.5">
-                  <div className="font-medium text-gray-900 truncate max-w-[260px]" title={row.sku_name}>
-                    {row.sku_name}
-                  </div>
-                  <div className="text-xs text-gray-400 font-mono mt-0.5">{row.sku_id}</div>
-                </td>
-                <td className="px-4 py-2.5">
-                  <input
-                    ref={(el) => { if (el) inputRefs.set(row.sku_id, el) }}
-                    type="number" min="0" step="1000" placeholder="VD: 50000"
-                    value={row.cogs_per_unit === "0" ? "" : row.cogs_per_unit}
-                    onChange={(e) => updateRow(row.sku_id, e.target.value || "0")}
-                    onKeyDown={(e) => handleKeyDown(e, row.sku_id)}
-                    className="w-full text-right border rounded-lg px-2.5 py-1.5 text-sm
-                               focus:outline-none focus:ring-2 focus:ring-blue-500
-                               [appearance:textfield] bg-white"
-                  />
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const cogs = parseFloat(row.cogs_per_unit)
+              const avg = row.avg_price ? parseFloat(row.avg_price) : null
+              const grossPct = avg && avg > 0 && cogs > 0
+                ? ((avg - cogs) / avg) * 100
+                : null
+
+              return (
+                <tr key={row.sku_id} className={row.dirty ? "bg-amber-50" : "hover:bg-gray-50"}>
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-gray-900 truncate max-w-[240px]" title={row.sku_name}>
+                      {row.sku_name}
+                    </div>
+                    <div className="text-xs text-gray-400 font-mono mt-0.5">{row.sku_id}</div>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <input
+                      ref={(el) => { if (el) inputRefs.set(row.sku_id, el) }}
+                      type="number" min="0" step="1000" placeholder="VD: 50000"
+                      value={row.cogs_per_unit === "0" ? "" : row.cogs_per_unit}
+                      onChange={(e) => updateRow(row.sku_id, e.target.value || "0")}
+                      onKeyDown={(e) => handleKeyDown(e, row.sku_id)}
+                      className="w-full text-right border rounded-lg px-2.5 py-1.5 text-sm
+                                 focus:outline-none focus:ring-2 focus:ring-blue-500
+                                 [appearance:textfield] bg-white"
+                    />
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    {grossPct !== null ? (
+                      <span className={`text-xs font-medium tabular-nums ${
+                        grossPct >= 15 ? "text-green-700" :
+                        grossPct >= 5  ? "text-amber-600" : "text-red-600"
+                      }`}>
+                        {grossPct >= 0 ? "" : "−"}{Math.abs(grossPct).toFixed(0)}%
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

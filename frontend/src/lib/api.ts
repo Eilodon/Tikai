@@ -532,6 +532,7 @@ export interface COGSItemResponse {
   sku_id: string
   sku_name: string
   cogs_per_unit: string  // Decimal as string, "0" = not set
+  avg_price?: string     // SUM(gmv)/SUM(qty) — used for live margin preview, absent on upsert responses
 }
 
 export interface COGSBatchResponse {

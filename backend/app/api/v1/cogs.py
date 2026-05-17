@@ -56,6 +56,7 @@ class COGSItemResponse(BaseModel):
     sku_id: str
     sku_name: str
     cogs_per_unit: str  # string to preserve Decimal precision
+    avg_price: str | None = None  # SUM(gmv)/SUM(qty) — used for live margin preview in UI
 
 
 class COGSBatchResponse(BaseModel):
@@ -76,7 +77,12 @@ async def get_cogs(
     # Sort by total GMV desc so high-revenue SKUs appear first — sellers fill those
     # first to cover the majority of revenue with minimal effort.
     result = await db.execute(
-        select(Order.sku_id, Order.sku_name, func.sum(Order.gmv).label("total_gmv"))
+        select(
+            Order.sku_id,
+            Order.sku_name,
+            func.sum(Order.gmv).label("total_gmv"),
+            func.sum(Order.quantity).label("total_qty"),
+        )
         .where(Order.shop_id == shop.id)
         .group_by(Order.sku_id, Order.sku_name)
         .order_by(func.sum(Order.gmv).desc())
@@ -90,6 +96,7 @@ async def get_cogs(
             sku_id=row.sku_id,
             sku_name=row.sku_name,
             cogs_per_unit=str(cogs_map.get(row.sku_id, "0")),
+            avg_price=str(row.total_gmv / row.total_qty) if row.total_qty else None,
         )
         for row in sku_rows
     ]

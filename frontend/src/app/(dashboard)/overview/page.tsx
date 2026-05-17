@@ -21,7 +21,8 @@ import { SkeletonCard } from "@/components/common/MoneyDisplay"
 import { WowScreen } from "@/components/insights/WowScreen"
 import { WowInsightBanner } from "@/components/insights/WowInsightBanner"
 import { ActivationProgress } from "@/components/ActivationProgress"
-import { formatVND } from "@/lib/api"
+import { formatVND, cogsApi } from "@/lib/api"
+import { getAuthToken } from "@/lib/supabase"
 
 function CollapsibleSection({
   title, defaultOpen = false, children,
@@ -50,6 +51,7 @@ export default function OverviewPage() {
   const dismiss  = useDismissAction()
   const recompute = useRecomputeInsight()
   const [recomputeError, setRecomputeError] = useState<string | null>(null)
+  const [savingCogsId, setSavingCogsId] = useState<string | null>(null)
   // M-1: persist WowScreen dismissal across page refreshes — must be declared
   // before early returns to obey Rules of Hooks
   const [wowDismissed, setWowDismissed] = useState(() => {
@@ -94,6 +96,20 @@ export default function OverviewPage() {
 
   // FIX HIGH-V2-6: only show recompute button for Pro+ tiers
   const isPro = shop?.subscription_tier === "pro" || shop?.subscription_tier === "business"
+
+  // Inline COGS save from SKUTable — saves then recomputes, invalidates insight cache
+  const handleSaveCogs = async (skuId: string, skuName: string, cogs: string) => {
+    setSavingCogsId(skuId)
+    try {
+      const token = await getAuthToken()
+      if (!token) return
+      await cogsApi.upsert(token, [{ sku_id: skuId, sku_name: skuName, cogs_per_unit: cogs }])
+      // useRecomputeInsight invalidates the insight query on success → SKUTable re-renders with margin
+      recompute.mutate(undefined)
+    } finally {
+      setSavingCogsId(null)
+    }
+  }
 
   const handleRecompute = async () => {
     setRecomputeError(null)
@@ -218,7 +234,11 @@ export default function OverviewPage() {
               title={criticalCount > 0 ? `SKUs (${criticalCount} critical cần xử lý)` : "Top SKUs"}
               defaultOpen={criticalCount > 0}
             >
-              <SKUTable insight={insight} />
+              <SKUTable
+                insight={insight}
+                onSaveCogs={handleSaveCogs}
+                savingCogsId={savingCogsId ?? undefined}
+              />
             </CollapsibleSection>
 
             <CollapsibleSection

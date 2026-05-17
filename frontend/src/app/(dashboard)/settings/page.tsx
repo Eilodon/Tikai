@@ -537,6 +537,22 @@ function ZaloSettings({ token, initialPhone, initialEnabled }: {
   )
 }
 
+// ── Settlement Tier Helper ─────────────────────────────────────────────────────
+
+function getSettlementTier(ldrPct: number | null, sfcrPct: number | null): {
+  days: number; label: string; color: string; desc: string
+} {
+  const ldr = ldrPct ?? 0
+  const sfcr = sfcrPct ?? 0
+  if (ldr > 5 || sfcr > 2) {
+    return { days: 31, label: "Tier 3", color: "text-red-600 bg-red-50 border-red-200", desc: "LDR > 5% hoặc SFCR > 2% — TikTok hold tiền 31 ngày" }
+  }
+  if (ldr < 2 && sfcr < 1) {
+    return { days: 7, label: "Tier 1", color: "text-green-700 bg-green-50 border-green-200", desc: "LDR < 2% và SFCR < 1% — tiền về nhanh nhất 7 ngày" }
+  }
+  return { days: 14, label: "Tier 2", color: "text-blue-700 bg-blue-50 border-blue-200", desc: "LDR 2–5% — settlement tiêu chuẩn 14 ngày" }
+}
+
 // ── Main Settings Page ────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -546,8 +562,20 @@ export default function SettingsPage() {
   const [shopName, setShopName] = useState("")
   const [token, setToken] = useState<string | null>(null)
 
+  // Gap #5: LDR/SFCR rates — stored as decimals (0.023), displayed as % (2.3)
+  const [ldrInput, setLdrInput] = useState("")
+  const [sfcrInput, setSfcrInput] = useState("")
+  const [savingRates, setSavingRates] = useState(false)
+  const [savedRates, setSavedRates] = useState(false)
+
   useEffect(() => { getAuthToken().then((t) => setToken(t)) }, [])
-  useEffect(() => { if (shop && !shopName) setShopName(shop.shop_name) }, [shop])
+  useEffect(() => {
+    if (shop) {
+      if (!shopName) setShopName(shop.shop_name)
+      if (shop.ldr_rate != null) setLdrInput(String(Math.round(shop.ldr_rate * 10000) / 100))
+      if (shop.sfcr_rate != null) setSfcrInput(String(Math.round(shop.sfcr_rate * 10000) / 100))
+    }
+  }, [shop])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setSaved(false)
@@ -559,6 +587,20 @@ export default function SettingsPage() {
       setSaved(true); setTimeout(() => setSaved(false), 3000)
     } catch (err) { console.error(err) }
     finally { setSaving(false) }
+  }
+
+  async function handleSaveRates(e: React.FormEvent) {
+    e.preventDefault(); setSavingRates(true); setSavedRates(false)
+    try {
+      const t = await getAuthToken()
+      if (!t) throw new Error("Not authenticated")
+      const ldr = ldrInput !== "" ? parseFloat(ldrInput) / 100 : null
+      const sfcr = sfcrInput !== "" ? parseFloat(sfcrInput) / 100 : null
+      await shopsApi.updateMe(t, { ldr_rate: ldr, sfcr_rate: sfcr })
+      await refetch()
+      setSavedRates(true); setTimeout(() => setSavedRates(false), 3000)
+    } catch (err) { console.error(err) }
+    finally { setSavingRates(false) }
   }
 
   if (isLoading || !token) return (
@@ -590,6 +632,86 @@ export default function SettingsPage() {
               {saving ? "Đang lưu..." : "Lưu"}
             </button>
             {saved && <span className="text-sm text-green-600">✓ Đã lưu</span>}
+          </div>
+        </form>
+      </div>
+
+      {/* TikTok Operations Metrics — Gap #5 */}
+      <div className="bg-white rounded-xl border p-6">
+        <h2 className="font-semibold mb-1">Chỉ số vận hành TikTok</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Tikai dùng LDR và SFCR để dự báo chính xác thời gian tiền về.{" "}
+          <span className="text-gray-400">
+            Lấy tại: Seller Center → Quản lý → Hiệu suất.
+          </span>
+        </p>
+        <form onSubmit={handleSaveRates} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="ldr-rate" className="block text-sm font-medium mb-1">
+                LDR{" "}
+                <span className="font-normal text-gray-400 text-xs">(Late Dispatch Rate)</span>
+              </label>
+              <div className="relative">
+                <input
+                  id="ldr-rate"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  placeholder="0.0"
+                  value={ldrInput}
+                  onChange={(e) => setLdrInput(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="absolute right-3 top-2 text-sm text-gray-400">%</span>
+              </div>
+            </div>
+            <div>
+              <label htmlFor="sfcr-rate" className="block text-sm font-medium mb-1">
+                SFCR{" "}
+                <span className="font-normal text-gray-400 text-xs">(Seller Fault Cancellation Rate)</span>
+              </label>
+              <div className="relative">
+                <input
+                  id="sfcr-rate"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  placeholder="0.0"
+                  value={sfcrInput}
+                  onChange={(e) => setSfcrInput(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="absolute right-3 top-2 text-sm text-gray-400">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Live settlement tier preview */}
+          {(() => {
+            const ldrNum = ldrInput !== "" ? parseFloat(ldrInput) : null
+            const sfcrNum = sfcrInput !== "" ? parseFloat(sfcrInput) : null
+            const tier = getSettlementTier(ldrNum, sfcrNum)
+            return (
+              <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${tier.color}`}>
+                <span className="font-semibold">{tier.label} · {tier.days} ngày</span>
+                <span>—</span>
+                <span>{tier.desc}</span>
+              </div>
+            )
+          })()}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={savingRates}
+              className="bg-gray-900 text-white text-sm px-4 py-2 rounded-lg font-medium hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              {savingRates ? "Đang lưu..." : "Lưu"}
+            </button>
+            {savedRates && <span className="text-sm text-green-600">✓ Đã lưu — dự báo tiền về đã cập nhật</span>}
           </div>
         </form>
       </div>

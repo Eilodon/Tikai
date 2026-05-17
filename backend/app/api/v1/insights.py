@@ -750,11 +750,15 @@ async def export_snapshot_csv(
     snapshot_id: uuid.UUID,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    format: str = Query("standard", pattern="^(standard|misa)$"),
 ) -> StreamingResponse:
     """Export top SKU P&L from a snapshot as CSV.
     Gated: Feature.CSV_EXPORT (pro/business only).
+    format=misa: Xuất theo chuẩn Misa (tên cột tiếng Việt, định dạng kế toán).
     """
     require_feature(shop, Feature.CSV_EXPORT)
+    if format == "misa":
+        require_feature(shop, Feature.MISA_EXPORT)
 
     snapshot = await db.scalar(
         select(InsightSnapshot).where(
@@ -769,47 +773,93 @@ async def export_snapshot_csv(
         )
 
     top_skus = _safe_parse(SKUSummaryItem, snapshot.top_skus_json or [])
+    period = f"{snapshot.period_start}_{snapshot.period_end}"
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(
-        [
-            "SKU ID",
-            "SKU Name",
-            "GMV (VND)",
-            "Net Revenue (VND)",
-            "Orders",
-            "Units Sold",
-            "Refund Rate (%)",
-            "Margin (VND)",
-            "Margin (%)",
-            "Health",
-            "Affiliate Cost (VND)",
-            "Voucher Cost (VND)",
-        ]
-    )
-    for s in top_skus:
-        refund_pct = f"{s.refund_rate * 100:.1f}"
-        margin_pct = f"{s.margin_pct * 100:.1f}" if s.margin_pct is not None else ""
+
+    if format == "misa":
+        # Misa-compatible format: Vietnamese headers, accountant-friendly columns
+        # Misa expects: Mã chứng từ, Ngày, Diễn giải, TK Nợ, TK Có, Số tiền
+        # For SKU P&L we map to a simplified Misa revenue/cost structure
         writer.writerow(
             [
-                _safe_csv_cell(s.sku_id),
-                _safe_csv_cell(s.sku_name),
-                str(s.gmv),
-                str(s.net_revenue),
-                s.order_count,
-                s.total_quantity,
-                refund_pct,
-                str(s.margin) if s.margin is not None else "",
-                margin_pct,
-                _safe_csv_cell(s.health_status),
-                str(s.affiliate_commission),
-                str(s.voucher_cost),
+                "Mã SKU",
+                "Tên sản phẩm",
+                "Kỳ báo cáo",
+                "Doanh thu gộp (đ)",
+                "Doanh thu thuần (đ)",
+                "Số lượng bán",
+                "Số đơn hàng",
+                "Tỷ lệ hoàn (%)",
+                "Giá vốn (đ)",
+                "Lợi nhuận gộp (đ)",
+                "Tỷ suất lợi nhuận (%)",
+                "Chi phí affiliate (đ)",
+                "Chi phí voucher (đ)",
+                "Trạng thái",
             ]
         )
+        for s in top_skus:
+            refund_pct = f"{s.refund_rate * 100:.1f}"
+            margin_pct = f"{s.margin_pct * 100:.1f}" if s.margin_pct is not None else "N/A"
+            writer.writerow(
+                [
+                    _safe_csv_cell(s.sku_id),
+                    _safe_csv_cell(s.sku_name),
+                    period.replace("_", " đến "),
+                    str(s.gmv),
+                    str(s.net_revenue),
+                    s.total_quantity,
+                    s.order_count,
+                    refund_pct,
+                    str(s.total_cogs) if s.total_cogs is not None else "Chưa nhập",
+                    str(s.margin) if s.margin is not None else "N/A",
+                    margin_pct,
+                    str(s.affiliate_commission),
+                    str(s.voucher_cost),
+                    _safe_csv_cell(s.health_status),
+                ]
+            )
+        filename = f"tikai_misa_{period}.csv"
+    else:
+        writer.writerow(
+            [
+                "SKU ID",
+                "SKU Name",
+                "GMV (VND)",
+                "Net Revenue (VND)",
+                "Orders",
+                "Units Sold",
+                "Refund Rate (%)",
+                "Margin (VND)",
+                "Margin (%)",
+                "Health",
+                "Affiliate Cost (VND)",
+                "Voucher Cost (VND)",
+            ]
+        )
+        for s in top_skus:
+            refund_pct = f"{s.refund_rate * 100:.1f}"
+            margin_pct = f"{s.margin_pct * 100:.1f}" if s.margin_pct is not None else ""
+            writer.writerow(
+                [
+                    _safe_csv_cell(s.sku_id),
+                    _safe_csv_cell(s.sku_name),
+                    str(s.gmv),
+                    str(s.net_revenue),
+                    s.order_count,
+                    s.total_quantity,
+                    refund_pct,
+                    str(s.margin) if s.margin is not None else "",
+                    margin_pct,
+                    _safe_csv_cell(s.health_status),
+                    str(s.affiliate_commission),
+                    str(s.voucher_cost),
+                ]
+            )
+        filename = f"tikai_sku_{period}.csv"
 
-    period = f"{snapshot.period_start}_{snapshot.period_end}"
-    filename = f"tikai_sku_{period}.csv"
     buf.seek(0)
 
     log.info(
@@ -817,6 +867,7 @@ async def export_snapshot_csv(
         shop_id=str(shop.id),
         snapshot_id=str(snapshot_id),
         rows=len(top_skus),
+        format=format,
     )
     return StreamingResponse(
         iter([buf.getvalue()]),
@@ -960,4 +1011,121 @@ async def get_cm3(
         "note_vi": (
             "CM3 chưa tính phí quảng cáo TikTok Ads (chỉ tính chi phí host/studio/mẫu trong kỳ)"
         ),
+    }
+
+
+# ── MCN / Multi-shop Aggregate ────────────────────────────────────────────────
+
+
+@router.get("/insights/aggregate")
+async def get_aggregate_overview(
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """
+    v2.3.0: Cross-shop aggregate P&L for the owner's Business/Enterprise account.
+    Returns total GMV, net revenue, refund rate and a per-shop breakdown
+    based on each shop's latest snapshot. Business+ tier required.
+
+    Intended for MCN operators and multi-brand sellers managing ≥2 shops.
+    """
+    require_feature(shop, Feature.MCN_AGGREGATE)
+
+    # All shops owned by the same account
+    owner_shops = await db.scalars(
+        select(Shop).where(Shop.owner_id == shop.owner_id, Shop.is_active.is_(True))
+    )
+    shop_list = list(owner_shops)
+
+    if not shop_list:
+        return {"shops": [], "aggregate": {}}
+
+    # Latest snapshot per shop (subquery: max created_at per shop_id)
+    from sqlalchemy import and_
+
+    subq = (
+        select(
+            InsightSnapshot.shop_id,
+            func.max(InsightSnapshot.created_at).label("latest"),
+        )
+        .where(InsightSnapshot.shop_id.in_([s.id for s in shop_list]))
+        .group_by(InsightSnapshot.shop_id)
+        .subquery()
+    )
+
+    snap_rows = await db.scalars(
+        select(InsightSnapshot).join(
+            subq,
+            and_(
+                InsightSnapshot.shop_id == subq.c.shop_id,
+                InsightSnapshot.created_at == subq.c.latest,
+            ),
+        )
+    )
+    snapshots = {s.shop_id: s for s in snap_rows}
+
+    shop_name_map = {s.id: s.shop_name for s in shop_list}
+
+    total_gmv = Decimal("0")
+    total_net_revenue = Decimal("0")
+    total_orders = 0
+    total_refunds = 0
+    per_shop = []
+
+    for s in shop_list:
+        snap = snapshots.get(s.id)
+        if snap is None:
+            per_shop.append(
+                {
+                    "shop_id": str(s.id),
+                    "shop_name": s.shop_name,
+                    "has_data": False,
+                }
+            )
+            continue
+
+        shop_gmv = snap.gmv_total or Decimal("0")
+        shop_nr = snap.net_revenue or Decimal("0")
+        shop_orders = snap.total_orders or 0
+        shop_refunds = snap.total_refunds or 0
+
+        total_gmv += shop_gmv
+        total_net_revenue += shop_nr
+        total_orders += shop_orders
+        total_refunds += shop_refunds
+
+        per_shop.append(
+            {
+                "shop_id": str(s.id),
+                "shop_name": s.shop_name,
+                "has_data": True,
+                "period_start": str(snap.period_start) if snap.period_start else None,
+                "period_end": str(snap.period_end) if snap.period_end else None,
+                "gmv": str(shop_gmv),
+                "net_revenue": str(shop_nr),
+                "total_orders": shop_orders,
+                "total_refunds": shop_refunds,
+                "refund_rate": str(snap.refund_rate) if snap.refund_rate is not None else None,
+                "subscription_tier": s.subscription_tier,
+            }
+        )
+
+    agg_refund_rate = (
+        str(Decimal(total_refunds) / Decimal(total_orders)) if total_orders > 0 else None
+    )
+
+    per_shop.sort(key=lambda x: Decimal(x.get("gmv", "0")) if x.get("has_data") else Decimal("0"), reverse=True)
+
+    return {
+        "owner_id": str(shop.owner_id),
+        "total_shops": len(shop_list),
+        "shops_with_data": sum(1 for x in per_shop if x.get("has_data")),
+        "aggregate": {
+            "gmv_total": str(total_gmv),
+            "net_revenue_total": str(total_net_revenue),
+            "total_orders": total_orders,
+            "total_refunds": total_refunds,
+            "refund_rate": agg_refund_rate,
+        },
+        "shops": per_shop,
     }

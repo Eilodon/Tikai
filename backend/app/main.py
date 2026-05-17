@@ -27,6 +27,7 @@ from app.api.v1 import (
     demo,
     imports,
     insights,
+    inventory,
     livestream,
     reconcile,
     shops,
@@ -180,6 +181,7 @@ app.include_router(weekly_receipts.router, prefix="/v1", tags=["weekly-receipts"
 app.include_router(livestream.router, prefix="/v1", tags=["livestream"])
 app.include_router(tools.router, prefix="/v1", tags=["tools"])
 app.include_router(reconcile.router, prefix="/v1", tags=["reconcile"])
+app.include_router(inventory.router, prefix="/v1", tags=["inventory"])
 app.include_router(demo.router, prefix="/v1", tags=["demo"])
 app.include_router(creators.router, prefix="/v1", tags=["creators"])
 app.include_router(admin.router, prefix="/v1", tags=["admin"])

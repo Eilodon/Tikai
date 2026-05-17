@@ -20,6 +20,9 @@ class Feature(StrEnum):
     CREATOR_CRM = "creator_crm"
     SHOPEE_LAZADA = "shopee_lazada"
     AI_CALLS_PER_IMPORT = "ai_calls_per_import"
+    INVENTORY_TRACKING = "inventory_tracking"
+    MCN_AGGREGATE = "mcn_aggregate"
+    MISA_EXPORT = "misa_export"
 
 
 TIER_GATES: dict[str, dict] = {
@@ -33,6 +36,9 @@ TIER_GATES: dict[str, dict] = {
         Feature.CREATOR_CRM: "basic",
         Feature.SHOPEE_LAZADA: True,
         Feature.AI_CALLS_PER_IMPORT: 10,
+        Feature.INVENTORY_TRACKING: True,
+        Feature.MCN_AGGREGATE: False,
+        Feature.MISA_EXPORT: True,
     },
     "free": {
         Feature.RE_ANALYSIS: False,
@@ -44,6 +50,9 @@ TIER_GATES: dict[str, dict] = {
         Feature.CREATOR_CRM: False,
         Feature.SHOPEE_LAZADA: False,
         Feature.AI_CALLS_PER_IMPORT: 5,
+        Feature.INVENTORY_TRACKING: False,
+        Feature.MCN_AGGREGATE: False,
+        Feature.MISA_EXPORT: False,
     },
     "pro": {
         Feature.RE_ANALYSIS: True,
@@ -55,6 +64,9 @@ TIER_GATES: dict[str, dict] = {
         Feature.CREATOR_CRM: "basic",
         Feature.SHOPEE_LAZADA: True,
         Feature.AI_CALLS_PER_IMPORT: 10,
+        Feature.INVENTORY_TRACKING: True,
+        Feature.MCN_AGGREGATE: False,
+        Feature.MISA_EXPORT: True,
     },
     "business": {
         Feature.RE_ANALYSIS: True,
@@ -66,17 +78,38 @@ TIER_GATES: dict[str, dict] = {
         Feature.CREATOR_CRM: "full",
         Feature.SHOPEE_LAZADA: True,
         Feature.AI_CALLS_PER_IMPORT: 15,
+        Feature.INVENTORY_TRACKING: True,
+        Feature.MCN_AGGREGATE: True,
+        Feature.MISA_EXPORT: True,
+    },
+    # v2.3.0: Enterprise tier for MCN / multi-agency accounts (2–5M VND/tháng)
+    "enterprise": {
+        Feature.RE_ANALYSIS: True,
+        Feature.HISTORICAL_WEEKS: 104,  # 2 years
+        Feature.MULTI_SHOP: 9999,
+        Feature.ZALO_PUSH: True,
+        Feature.BENCHMARKS: True,
+        Feature.CSV_EXPORT: True,
+        Feature.CREATOR_CRM: "full",
+        Feature.SHOPEE_LAZADA: True,
+        Feature.AI_CALLS_PER_IMPORT: 20,
+        Feature.INVENTORY_TRACKING: True,
+        Feature.MCN_AGGREGATE: True,
+        Feature.MISA_EXPORT: True,
     },
 }
 
 UPGRADE_MESSAGES: dict[Feature, str] = {
-    Feature.RE_ANALYSIS: "Tính lại P&L với COGS mới cần gói Pro (99k/tháng).",
-    Feature.HISTORICAL_WEEKS: "Xem lịch sử quá 4 tuần cần gói Pro (99k/tháng).",
-    Feature.ZALO_PUSH: "Nhận thông báo Zalo hàng tuần cần gói Pro (99k/tháng).",
-    Feature.CSV_EXPORT: "Xuất dữ liệu CSV cần gói Pro (99k/tháng).",
-    Feature.SHOPEE_LAZADA: "Import dữ liệu Shopee/Lazada không khả dụng ở gói này.",
-    Feature.CREATOR_CRM: "Creator CRM cần gói Pro (99k/tháng).",
-    Feature.BENCHMARKS: "Benchmark ngành cần gói Pro (99k/tháng).",
+    Feature.RE_ANALYSIS: "Tính lại P&L với COGS mới cần gói Pro (299k/tháng).",
+    Feature.HISTORICAL_WEEKS: "Xem lịch sử quá 4 tuần cần gói Pro (299k/tháng).",
+    Feature.ZALO_PUSH: "Nhận thông báo Zalo hàng tuần cần gói Pro (299k/tháng).",
+    Feature.CSV_EXPORT: "Xuất dữ liệu CSV cần gói Pro (299k/tháng).",
+    Feature.SHOPEE_LAZADA: "Import dữ liệu Shopee/Lazada cần gói Pro (299k/tháng).",
+    Feature.CREATOR_CRM: "Creator CRM cần gói Pro (299k/tháng).",
+    Feature.BENCHMARKS: "Benchmark ngành cần gói Pro (299k/tháng).",
+    Feature.INVENTORY_TRACKING: "Theo dõi tồn kho và dự báo hết hàng cần gói Pro (299k/tháng).",
+    Feature.MCN_AGGREGATE: "Xem tổng hợp đa shop cần gói Business (799k/tháng).",
+    Feature.MISA_EXPORT: "Xuất báo cáo theo chuẩn Misa cần gói Pro (299k/tháng).",
 }
 
 

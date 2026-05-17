@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { InsightSnapshotResponse, SKUSummaryItem, formatVND, formatPct } from "@/lib/api"
 import { WhatIfPanel } from "./WhatIfPanel"
 
@@ -41,9 +41,60 @@ function HealthCell({ sku }: { sku: SKUSummaryItem }) {
   )
 }
 
+// Inline COGS input shown in the Margin cell when margin_pct is null
+function InlineCOGSInput({
+  sku,
+  onSave,
+  saving,
+}: {
+  sku: SKUSummaryItem
+  onSave: (skuId: string, skuName: string, cogs: string) => Promise<void>
+  saving: boolean
+}) {
+  const [val, setVal] = useState("")
+  const [saved, setSaved] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  async function commit() {
+    const trimmed = val.trim()
+    if (!trimmed || parseFloat(trimmed) <= 0) return
+    await onSave(sku.sku_id, sku.sku_name, trimmed)
+    setSaved(true)
+  }
+
+  if (saved) return <span className="text-xs text-green-600 font-medium">✓</span>
+  if (saving) return <span className="text-xs text-gray-400">...</span>
+
+  return (
+    <input
+      ref={inputRef}
+      type="number"
+      min="0"
+      step="1000"
+      placeholder="Giá vốn"
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit() } }}
+      className="w-24 text-right border border-dashed border-gray-300 rounded px-1.5 py-0.5
+                 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400
+                 [appearance:textfield] bg-white placeholder:text-gray-300"
+      title={`Nhập giá vốn cho ${sku.sku_name}`}
+    />
+  )
+}
+
 type FilterTab = "all" | "critical" | "warning"
 
-export function SKUTable({ insight }: { insight: InsightSnapshotResponse }) {
+export function SKUTable({
+  insight,
+  onSaveCogs,
+  savingCogsId,
+}: {
+  insight: InsightSnapshotResponse
+  onSaveCogs?: (skuId: string, skuName: string, cogs: string) => Promise<void>
+  savingCogsId?: string
+}) {
   const [filter, setFilter] = useState<FilterTab>("all")
   const [whatIfSku, setWhatIfSku] = useState<SKUSummaryItem | null>(null)
 
@@ -126,6 +177,12 @@ export function SKUTable({ insight }: { insight: InsightSnapshotResponse }) {
                       <span className={parseFloat(sku.margin_pct) < 0 ? "text-red-600 font-medium" : "text-green-700"}>
                         {formatPct(sku.margin_pct)}
                       </span>
+                    ) : onSaveCogs ? (
+                      <InlineCOGSInput
+                        sku={sku}
+                        onSave={onSaveCogs}
+                        saving={savingCogsId === sku.sku_id}
+                      />
                     ) : (
                       <span className="text-gray-300 text-xs">—</span>
                     )}

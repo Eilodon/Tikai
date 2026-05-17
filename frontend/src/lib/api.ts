@@ -532,12 +532,22 @@ export interface COGSItemResponse {
   sku_id: string
   sku_name: string
   cogs_per_unit: string  // Decimal as string, "0" = not set
+  avg_price?: string     // SUM(gmv)/SUM(qty) — used for live margin preview, absent on upsert responses
 }
 
 export interface COGSBatchResponse {
   updated: number
   items: COGSItemResponse[]
   total_skus: number
+}
+
+export interface COGSHistoryEntry {
+  id: string
+  sku_id: string
+  cogs_per_unit: string
+  effective_date: string
+  note: string | null
+  created_at: string
 }
 
 export const cogsApi = {
@@ -550,6 +560,9 @@ export const cogsApi = {
       body: JSON.stringify({ items }),
       token,
     }),
+
+  getHistory: (token: string, skuId: string) =>
+    request<COGSHistoryEntry[]>(`/v1/cogs/history/${encodeURIComponent(skuId)}`, { token }),
 }
 
 // ── Reconcile ─────────────────────────────────────────────────────────────────

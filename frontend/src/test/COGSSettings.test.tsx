@@ -101,7 +101,7 @@ describe("COGS Settings UI", () => {
     })
   })
 
-  it("shows recompute nudge after successful save", async () => {
+  it("auto-recomputes after save and shows confirmation (no separate nudge button)", async () => {
     render(<SettingsPage />)
     await waitFor(() => screen.getByText("Serum vitamin C"))
 
@@ -111,8 +111,10 @@ describe("COGS Settings UI", () => {
     const saveBtn = await waitFor(() => screen.getByText(/Lưu 1 thay đổi/))
     fireEvent.click(saveBtn)
 
+    // Saving shows interim message; after recompute resolves shows final confirmation
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Tính lại P&L/ })).toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: /Tính lại P&L/ })).toBeNull()
+      expect(screen.getByText(/Đã lưu/)).toBeInTheDocument()
     })
   })
 })

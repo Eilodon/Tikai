@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect, useRef } from "react"
 import { useShop } from "@/hooks/useApi"
-import { shopsApi, cogsApi, insightsApi, notificationsApi, COGSItemResponse } from "@/lib/api"
+import { shopsApi, cogsApi, insightsApi, notificationsApi, COGSItemResponse, COGSHistoryEntry } from "@/lib/api"
 import { getAuthToken } from "@/lib/supabase"
 import { PriceRecommender } from "@/components/insights/PriceRecommender"
 
@@ -9,6 +9,64 @@ import { PriceRecommender } from "@/components/insights/PriceRecommender"
 
 interface COGSRow extends COGSItemResponse {
   dirty: boolean
+  original_cogs: string  // T3-3: value at load time, for variance detection
+  selected: boolean       // T3-1: bulk-select state
+}
+
+// T3-2: History popover — fetches and displays previous COGS values for a SKU
+function COGSHistoryPopover({ skuId, token, onClose }: { skuId: string; token: string; onClose: () => void }) {
+  const [entries, setEntries] = useState<COGSHistoryEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    cogsApi.getHistory(token, skuId)
+      .then(setEntries)
+      .catch(() => setEntries([]))
+      .finally(() => setLoading(false))
+  }, [skuId, token])
+
+  // Close on outside click
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener("mousedown", handle)
+    return () => document.removeEventListener("mousedown", handle)
+  }, [onClose])
+
+  return (
+    <>
+      <div className="fixed inset-0 z-10" onClick={onClose} />
+      <div
+        ref={ref}
+        className="absolute left-0 top-full mt-1 z-20 bg-white border rounded-xl shadow-lg p-3 w-56 text-xs"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <p className="font-semibold text-gray-800">Lịch sử giá vốn</p>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 leading-none">✕</button>
+        </div>
+        {loading ? (
+          <div className="space-y-1.5">
+            {[1,2].map(i => <div key={i} className="h-4 bg-gray-100 rounded animate-pulse" />)}
+          </div>
+        ) : entries.length === 0 ? (
+          <p className="text-gray-400">Chưa có lịch sử.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {entries.slice(0, 6).map((e) => (
+              <li key={e.id} className="flex items-center justify-between gap-2">
+                <span className="text-gray-500">{e.effective_date}</span>
+                <span className="font-medium text-gray-800 tabular-nums">
+                  {parseInt(e.cogs_per_unit).toLocaleString("vi-VN")} đ
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  )
 }
 
 function COGSTable({ token }: { token: string }) {
@@ -18,12 +76,19 @@ function COGSTable({ token }: { token: string }) {
   const [saveResult, setSaveResult] = useState<"saved" | "recomputed" | null>(null)
   const [totalSkus, setTotalSkus] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [historySkuId, setHistorySkuId] = useState<string | null>(null)  // T3-2
+  const [bulkValue, setBulkValue] = useState("")                          // T3-1
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map()).current
 
   useEffect(() => {
     cogsApi.getAll(token)
       .then((res) => {
-        setRows(res.items.map((item) => ({ ...item, dirty: false })))
+        setRows(res.items.map((item) => ({
+          ...item,
+          dirty: false,
+          original_cogs: item.cogs_per_unit,
+          selected: false,
+        })))
         setTotalSkus(res.total_skus)
       })
       .catch(() => setError("Không tải được danh sách SKU."))
@@ -35,6 +100,30 @@ function COGSTable({ token }: { token: string }) {
       prev.map((r) => r.sku_id === skuId ? { ...r, cogs_per_unit: newCogs, dirty: true } : r)
     )
   }
+
+  // T3-1: toggle individual row selection
+  function toggleSelect(skuId: string) {
+    setRows((prev) => prev.map((r) => r.sku_id === skuId ? { ...r, selected: !r.selected } : r))
+  }
+
+  function toggleSelectAll() {
+    const allSelected = rows.every((r) => r.selected)
+    setRows((prev) => prev.map((r) => ({ ...r, selected: !allSelected })))
+  }
+
+  // T3-1: apply bulkValue to all selected rows
+  function applyBulkFill() {
+    const val = bulkValue.trim()
+    if (!val) return
+    setRows((prev) => prev.map((r) =>
+      r.selected ? { ...r, cogs_per_unit: val, dirty: true, selected: false } : r
+    ))
+    setBulkValue("")
+  }
+
+  const selectedRows = rows.filter((r) => r.selected)
+  const selectedCount = selectedRows.length
+  const allSelected = rows.length > 0 && rows.every((r) => r.selected)
 
   // T1-5: allow dirty rows with "0" so users can clear a previously-set COGS
   const dirtyRows = rows.filter((r) => r.dirty)
@@ -69,7 +158,11 @@ function COGSTable({ token }: { token: string }) {
         sku_name: r.sku_name,
         cogs_per_unit: r.cogs_per_unit,
       })))
-      setRows((prev) => prev.map((r) => ({ ...r, dirty: false })))
+      setRows((prev) => prev.map((r) => ({
+        ...r,
+        dirty: false,
+        original_cogs: r.dirty ? r.cogs_per_unit : r.original_cogs,
+      })))
       setSaveResult("saved")
       // Fire-and-forget recompute — don't block UX, ignore 402 (free tier)
       insightsApi.recompute(token)
@@ -120,11 +213,53 @@ function COGSTable({ token }: { token: string }) {
         />
       </div>
 
+      {/* T3-1: Bulk-fill toolbar — appears when ≥1 row is selected */}
+      {selectedCount > 0 && (
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+          <span className="text-xs text-blue-700 font-medium whitespace-nowrap">
+            Điền {selectedCount} SKU đã chọn:
+          </span>
+          <input
+            type="number" min="0" step="1000" placeholder="Giá vốn chung..."
+            value={bulkValue}
+            onChange={(e) => setBulkValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") applyBulkFill() }}
+            className="flex-1 text-right border rounded px-2 py-1 text-xs
+                       focus:outline-none focus:ring-2 focus:ring-blue-500
+                       [appearance:textfield] bg-white min-w-0"
+          />
+          <button
+            onClick={applyBulkFill}
+            disabled={!bulkValue.trim()}
+            className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded font-medium
+                       hover:bg-blue-700 disabled:opacity-40 transition-colors whitespace-nowrap"
+          >
+            Áp dụng
+          </button>
+          <button
+            onClick={() => setRows((prev) => prev.map((r) => ({ ...r, selected: false })))}
+            className="text-xs text-blue-500 hover:text-blue-700 px-1"
+            title="Bỏ chọn tất cả"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-4 py-2.5 font-medium text-gray-600">SKU</th>
+              <th className="px-3 py-2.5 w-8">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  title="Chọn tất cả"
+                />
+              </th>
+              <th className="text-left px-3 py-2.5 font-medium text-gray-600">SKU</th>
               <th className="text-right px-4 py-2.5 font-medium text-gray-600 w-48">Giá vốn / đơn vị (VND)</th>
               <th className="text-right px-3 py-2.5 font-medium text-gray-600 w-24">Gross ≈</th>
             </tr>
@@ -137,14 +272,56 @@ function COGSTable({ token }: { token: string }) {
                 ? ((avg - cogs) / avg) * 100
                 : null
 
+              // T3-3: variance vs original saved value
+              const origCogs = parseFloat(row.original_cogs)
+              const variancePct = row.dirty && origCogs > 0 && cogs > 0
+                ? ((cogs - origCogs) / origCogs) * 100
+                : null
+              const hasLargeVariance = variancePct !== null && Math.abs(variancePct) >= 30
+
               return (
-                <tr key={row.sku_id} className={row.dirty ? "bg-amber-50" : "hover:bg-gray-50"}>
-                  <td className="px-4 py-2.5">
-                    <div className="font-medium text-gray-900 truncate max-w-[240px]" title={row.sku_name}>
-                      {row.sku_name}
+                <tr
+                  key={row.sku_id}
+                  className={
+                    row.selected ? "bg-blue-50" :
+                    row.dirty    ? "bg-amber-50" : "hover:bg-gray-50"
+                  }
+                >
+                  {/* T3-1: row checkbox */}
+                  <td className="px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={row.selected}
+                      onChange={() => toggleSelect(row.sku_id)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </td>
+
+                  {/* T3-2: SKU name + history button */}
+                  <td className="px-3 py-2.5 relative">
+                    <div className="flex items-center gap-1.5">
+                      <div className="font-medium text-gray-900 truncate max-w-[200px]" title={row.sku_name}>
+                        {row.sku_name}
+                      </div>
+                      <button
+                        onClick={() => setHistorySkuId(row.sku_id === historySkuId ? null : row.sku_id)}
+                        title="Xem lịch sử giá vốn"
+                        className="text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0 leading-none"
+                      >
+                        ↻
+                      </button>
                     </div>
                     <div className="text-xs text-gray-400 font-mono mt-0.5">{row.sku_id}</div>
+                    {historySkuId === row.sku_id && (
+                      <COGSHistoryPopover
+                        skuId={row.sku_id}
+                        token={token}
+                        onClose={() => setHistorySkuId(null)}
+                      />
+                    )}
                   </td>
+
+                  {/* COGS input + T3-3 variance warning */}
                   <td className="px-4 py-2.5">
                     <input
                       ref={(el) => { if (el) inputRefs.set(row.sku_id, el) }}
@@ -152,19 +329,33 @@ function COGSTable({ token }: { token: string }) {
                       value={row.cogs_per_unit === "0" ? "" : row.cogs_per_unit}
                       onChange={(e) => updateRow(row.sku_id, e.target.value || "0")}
                       onKeyDown={(e) => handleKeyDown(e, row.sku_id)}
-                      className="w-full text-right border rounded-lg px-2.5 py-1.5 text-sm
+                      className={`w-full text-right border rounded-lg px-2.5 py-1.5 text-sm
                                  focus:outline-none focus:ring-2 focus:ring-blue-500
-                                 [appearance:textfield] bg-white"
+                                 [appearance:textfield] bg-white ${
+                                   hasLargeVariance ? "border-orange-400" : ""
+                                 }`}
                     />
+                    {hasLargeVariance && variancePct !== null && (
+                      <p className="text-xs text-orange-600 text-right mt-0.5">
+                        ⚠ {variancePct > 0 ? "+" : ""}{variancePct.toFixed(0)}% vs trước
+                      </p>
+                    )}
                   </td>
+
+                  {/* T2-1: gross margin preview + T3-3 negative margin alert */}
                   <td className="px-3 py-2.5 text-right">
                     {grossPct !== null ? (
-                      <span className={`text-xs font-medium tabular-nums ${
-                        grossPct >= 15 ? "text-green-700" :
-                        grossPct >= 5  ? "text-amber-600" : "text-red-600"
-                      }`}>
-                        {grossPct >= 0 ? "" : "−"}{Math.abs(grossPct).toFixed(0)}%
-                      </span>
+                      <div>
+                        <span className={`text-xs font-medium tabular-nums ${
+                          grossPct >= 15 ? "text-green-700" :
+                          grossPct >= 5  ? "text-amber-600" : "text-red-600"
+                        }`}>
+                          {grossPct >= 0 ? "" : "−"}{Math.abs(grossPct).toFixed(0)}%
+                        </span>
+                        {grossPct < 0 && (
+                          <p className="text-xs text-red-500 mt-0.5">COGS &gt; giá bán</p>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs text-gray-300">—</span>
                     )}

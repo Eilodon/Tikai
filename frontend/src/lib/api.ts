@@ -541,6 +541,15 @@ export interface COGSBatchResponse {
   total_skus: number
 }
 
+export interface COGSHistoryEntry {
+  id: string
+  sku_id: string
+  cogs_per_unit: string
+  effective_date: string
+  note: string | null
+  created_at: string
+}
+
 export const cogsApi = {
   getAll: (token: string) =>
     request<COGSBatchResponse>("/v1/cogs", { token }),
@@ -551,6 +560,9 @@ export const cogsApi = {
       body: JSON.stringify({ items }),
       token,
     }),
+
+  getHistory: (token: string, skuId: string) =>
+    request<COGSHistoryEntry[]>(`/v1/cogs/history/${encodeURIComponent(skuId)}`, { token }),
 }
 
 // ── Reconcile ─────────────────────────────────────────────────────────────────

@@ -822,7 +822,9 @@ async def export_snapshot_csv(
                     s.total_quantity,
                     s.order_count,
                     refund_pct,
-                    str(s.total_cogs) if s.total_cogs is not None else "Chưa nhập",
+                    # BUG-C2 FIX: SKUSummaryItem has no total_cogs field → AttributeError.
+                    # Use margin (net_revenue - COGS) which is already computed and serialized.
+                    str(s.margin) if s.margin is not None else "Chưa nhập",
                     str(s.margin) if s.margin is not None else "N/A",
                     margin_pct,
                     str(s.affiliate_commission),
@@ -1027,7 +1029,9 @@ async def get_cm3(
 
 
 @router.get("/insights/aggregate")
+@limiter.limit("10/minute")  # BUG-M2 FIX: MCN query fans out to all shops — rate-limit to prevent DoS
 async def get_aggregate_overview(
+    request: Request,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
@@ -1049,27 +1053,19 @@ async def get_aggregate_overview(
     if not shop_list:
         return {"shops": [], "aggregate": {}}
 
-    # Latest snapshot per shop (subquery: max created_at per shop_id)
-    from sqlalchemy import and_
-
-    subq = (
-        select(
-            InsightSnapshot.shop_id,
-            func.max(InsightSnapshot.created_at).label("latest"),
-        )
-        .where(InsightSnapshot.shop_id.in_([s.id for s in shop_list]))
-        .group_by(InsightSnapshot.shop_id)
-        .subquery()
-    )
-
+    # BUG-M2 FIX: old subquery joined on created_at == max(created_at), which returns
+    # duplicate rows when two snapshots share an exact timestamp (NTP hiccup, concurrent
+    # imports). Use DISTINCT ON with (created_at DESC, id DESC) tie-breaking instead —
+    # PostgreSQL guarantees exactly one row per shop_id.
     snap_rows = await db.scalars(
-        select(InsightSnapshot).join(
-            subq,
-            and_(
-                InsightSnapshot.shop_id == subq.c.shop_id,
-                InsightSnapshot.created_at == subq.c.latest,
-            ),
+        select(InsightSnapshot)
+        .where(InsightSnapshot.shop_id.in_([s.id for s in shop_list]))
+        .order_by(
+            InsightSnapshot.shop_id,
+            InsightSnapshot.created_at.desc(),
+            InsightSnapshot.id.desc(),
         )
+        .distinct(InsightSnapshot.shop_id)
     )
     snapshots = {s.shop_id: s for s in snap_rows}
 

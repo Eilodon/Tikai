@@ -66,8 +66,10 @@ async def _get_latest_fee_config_data(db: AsyncSession, platform: str = "tiktok"
 class PriceRecommendRequest(BaseModel):
     cogs_per_unit: Decimal
     target_margin_pct: Decimal  # 0.05 → 0.50
-    affiliate_rate: Decimal = Decimal("0.10")
-    voucher_rate: Decimal = Decimal("0.05")
+    # BUG-H2 FIX: negative rates violated min_price >= cogs invariant (public endpoint, no auth).
+    # ge=0 prevents crafted inputs like affiliate_rate=-1.0 from returning min_price < COGS.
+    affiliate_rate: Decimal = Field(Decimal("0.10"), ge=Decimal("0"), le=Decimal("0.50"))
+    voucher_rate: Decimal = Field(Decimal("0.05"), ge=Decimal("0"), le=Decimal("0.50"))
 
 
 @router.post("/tools/price-recommend")

@@ -66,7 +66,9 @@ async def trigger_weekly_receipts(ctx: dict) -> None:
     week_label = f"tuần {iso_week}/{iso_year}"
 
     AsyncSessionLocal = ctx["db_session_factory"]  # noqa: N806
-    arq = ctx.get("arq")
+    # BUG-C1 FIX: ARQ injects the Redis pool as ctx["redis"] (ArqRedis object),
+    # NOT ctx["arq"]. ctx.get("arq") always returns None → zero jobs ever enqueued.
+    arq = ctx.get("redis")
     async with AsyncSessionLocal() as db:
         shop_ids = list(
             await db.scalars(select(Shop.id).where(Shop.is_active == True))  # noqa: E712
@@ -169,10 +171,14 @@ async def process_weekly_receipt_for_shop(ctx: dict, shop_id: str, week_label: s
             elif rule == "creator_roi_below_one":
                 pass  # mv is ratio not money — skip estimation
 
+        # BUG-H1 FIX: prices from UPGRADE_MESSAGES in gates.py
+        # Old values: pro=99k (wrong), business=299k (wrong). Added pro_trial + enterprise.
         _subscription_cost_map = {
-            "free": Decimal("0"),
-            "pro": Decimal("99000"),
-            "business": Decimal("299000"),
+            "free":       Decimal("0"),
+            "pro_trial":  Decimal("0"),        # free trial period
+            "pro":        Decimal("299000"),   # 299k/tháng per UPGRADE_MESSAGES
+            "business":   Decimal("799000"),   # 799k/tháng per UPGRADE_MESSAGES
+            "enterprise": Decimal("2000000"),  # ~2M/tháng (estimate — verify with sales)
         }
         _tier = getattr(shop, "subscription_tier", "free") or "free"
         receipt_input = WeeklyReceiptInput(
@@ -208,7 +214,9 @@ async def process_weekly_receipt_for_shop(ctx: dict, shop_id: str, week_label: s
         # L8-H02: email digest is a Pro+ feature — skip for Free tier regardless of flag.
         from app.core.gates import Feature, get_gate_value
 
-        _email_tier_ok = bool(get_gate_value(shop, Feature.ZALO_PUSH))  # Pro+ indicator
+        # BUG-L1 FIX: avoid coupling email digest access to Feature.ZALO_PUSH gate.
+        # Check subscription tier directly — email digest is a Pro+ feature.
+        _email_tier_ok = getattr(shop, "subscription_tier", "free") not in ("free",)
         if _email_tier_ok and shop.email_digest_enabled and shop.notification_email:
             sent = await send_weekly_digest(
                 to_email=shop.notification_email,

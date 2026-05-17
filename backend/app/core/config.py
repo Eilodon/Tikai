@@ -46,9 +46,12 @@ class Settings(BaseSettings):
     ai_top_n_skus: int = 20
     ai_top_n_refund_reasons: int = 200
     # F-1B-06: explicit per-tier AI call limits (replaces magic * 5 multiplier)
-    ai_max_calls_per_import_free: int = 3
+    # BUG-L2 FIX: gates.py advertises Free=5 but config was 3. Aligned to 5.
+    # BUG-M1 FIX: enterprise tier added (gates.py Feature.AI_CALLS_PER_IMPORT: 20).
+    ai_max_calls_per_import_free: int = 5
     ai_max_calls_per_import_pro: int = 10
     ai_max_calls_per_import_business: int = 15
+    ai_max_calls_per_import_enterprise: int = 20
 
     # Redis
     redis_url: str = "redis://localhost:6379"

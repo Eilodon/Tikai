@@ -109,6 +109,8 @@ def _to_response(
         fee_config_version=snapshot.fee_config_version,
         cogs_coverage_pct=snapshot.cogs_coverage_pct,
         is_net_revenue_mode=snapshot.is_net_revenue_mode,
+        # Gap #4: fee estimation discrepancy notes — empty list for old snapshots
+        fee_discrepancy_notes=getattr(snapshot, "fee_discrepancy_notes_json", []) or [],
         days_in_period=days_in_period,
         is_partial_period=is_partial_period,
         is_first_import=is_first_import,
@@ -486,7 +488,12 @@ async def recompute_insight(
     # 6. Save new snapshot (recomputed)
     from app.services.rule_engine.settlement_calc import calculate_settlement_forecast
 
-    settlement = calculate_settlement_forecast(rows, reference_date=base.period_end)
+    settlement = calculate_settlement_forecast(
+        rows,
+        reference_date=base.period_end,
+        ldr_rate=getattr(shop, "ldr_rate", None),
+        sfcr_rate=getattr(shop, "sfcr_rate", None),
+    )
     cash_in_14d = settlement.cash_in_14d if settlement.cash_in_14d > 0 else None
     cash_in_30d = settlement.cash_in_30d if settlement.cash_in_30d > 0 else None
     cash_pending_total = settlement.pending_total if settlement.pending_total > 0 else None
@@ -570,6 +577,8 @@ async def recompute_insight(
         fee_config_version=insight_data.fee_config_version,
         cogs_coverage_pct=insight_data.cogs_coverage_pct,
         is_net_revenue_mode=insight_data.is_net_revenue_mode,
+        # Gap #4: persist fee estimation discrepancy notes
+        fee_discrepancy_notes_json=insight_data.fee_discrepancy_notes,
     )
     db.add(new_snapshot)
     await db.flush()

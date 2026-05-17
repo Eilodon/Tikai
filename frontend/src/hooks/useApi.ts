@@ -1,7 +1,7 @@
 "use client"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { queryKeys } from "@/lib/query-client"
-import { insightsApi, actionsApi, shopsApi, importsApi, livestreamApi, reconcileApi, creatorsApi, type AIActionListResponse, type LiveStreamCreateRequest, type ReconcileResponse, type CreatorProfileResponse, type CreatorProfileUpdateRequest } from "@/lib/api"
+import { insightsApi, actionsApi, shopsApi, importsApi, livestreamApi, reconcileApi, creatorsApi, toolsApi, type AIActionListResponse, type LiveStreamCreateRequest, type ReconcileResponse, type CreatorProfileResponse, type CreatorProfileUpdateRequest } from "@/lib/api"
 import { getAuthToken } from "@/lib/supabase"
 
 // ── Auth helper ──────────────────────────────────────────────────────────────
@@ -216,5 +216,15 @@ export function useCreatorCohort(periodIds: string[]) {
     queryKey: queryKeys.creatorCohort(periodIds),
     queryFn: () => withToken((t) => creatorsApi.getCohort(t, periodIds)),
     enabled: periodIds.length >= 2,
+  })
+}
+
+// ── Fee Config (Gap #1) ───────────────────────────────────────────────────────
+
+export function useCurrentFeeConfig() {
+  return useQuery({
+    queryKey: ["feeConfig", "current"],
+    queryFn: () => withToken((t) => toolsApi.getCurrentFeeConfig(t)),
+    staleTime: 1000 * 60 * 60,  // 1 hour — fee config rarely changes
   })
 }

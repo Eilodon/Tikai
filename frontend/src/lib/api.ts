@@ -150,6 +150,23 @@ export interface ShopResponse {
   category?: string | null
   seller_phone?: string | null
   zns_enabled?: boolean
+  // Gap #5: dynamic settlement window rates
+  ldr_rate?: number | null
+  sfcr_rate?: number | null
+}
+
+// Gap #1: Full fee config with verified_date for PLSummary badge
+export interface FeeConfigCurrentResponse {
+  version: string
+  platform: string
+  platform_commission_rate: string
+  transaction_fee_rate: string
+  order_processing_fee_per_order: string
+  effective_from: string
+  effective_to: string | null
+  verified_date: string
+  notes: string | null
+  is_stale: boolean
 }
 
 export interface FeeScheduleResponse {
@@ -299,6 +316,8 @@ export interface InsightSnapshotResponse {
   cogs_coverage_pct: string
   rule_engine_version: string
   fee_config_version: string
+  // Gap #4: orders where fees were estimated (not parsed from CSV)
+  fee_discrepancy_notes: string[]
   // NEW: period metadata for incomplete-week warning
   days_in_period: number
   is_partial_period: boolean
@@ -513,6 +532,10 @@ export const toolsApi = {
       `/v1/insights/${snapshotId}/benchmark?category=${category}`,
       { token }
     ),
+
+  // Gap #1: get full fee config with verified_date + stale flag
+  getCurrentFeeConfig: (token: string) =>
+    request<FeeConfigCurrentResponse>("/v1/fee-config/current", { token }),
 }
 
 /**

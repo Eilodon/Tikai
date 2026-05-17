@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from "react"
 import { useImportStatus } from "@/hooks/useApi"
 import { importsApi, cogsApi, ImportSessionResponse } from "@/lib/api"
 import { getAuthToken } from "@/lib/supabase"
+import { PrivacyBanner } from "@/components/common/PrivacyBanner"
 
 function ExportGuide() {
   const [open, setOpen] = useState(false)
@@ -84,6 +85,8 @@ export default function ImportPage() {
         <h1 className="text-xl font-semibold">Import dữ liệu</h1>
         <p className="text-sm text-gray-500 mt-1">Upload file Order Export từ TikTok Shop hoặc Shopee Seller Center.</p>
       </div>
+
+      <PrivacyBanner />
 
       <ExportGuide />
 

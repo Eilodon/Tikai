@@ -117,6 +117,8 @@ class InsightSnapshotResponse(BaseModel):
     fee_config_version: str
     cogs_coverage_pct: Decimal
     is_net_revenue_mode: bool
+    # Gap #4: orders where platform fees were estimated (not parsed from CSV)
+    fee_discrepancy_notes: list[str] = []
     # NEW: period metadata for incomplete-period warning
     days_in_period: int = 7
     is_partial_period: bool = False

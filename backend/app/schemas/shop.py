@@ -21,6 +21,9 @@ class UpdateShopRequest(BaseModel):
     category: str | None = Field(default=None, max_length=50)
     seller_phone: str | None = Field(default=None, max_length=20)
     zns_enabled: bool | None = None
+    # Gap #5: Dynamic settlement window — LDR/SFCR from TikTok Seller Center (0–1)
+    ldr_rate: float | None = Field(default=None, ge=0, le=1)
+    sfcr_rate: float | None = Field(default=None, ge=0, le=1)
 
     @field_validator("category")
     @classmethod
@@ -57,3 +60,6 @@ class ShopResponse(BaseModel):
     # ZNS prep
     seller_phone: str | None = None
     zns_enabled: bool = False
+    # Gap #5: Dynamic settlement window rates
+    ldr_rate: float | None = None
+    sfcr_rate: float | None = None

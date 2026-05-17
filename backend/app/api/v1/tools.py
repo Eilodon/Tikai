@@ -135,6 +135,62 @@ async def get_fee_schedule_public(
     }
 
 
+# ── Fee Config Current (Gap #1) ──────────────────────────────────────────────
+
+
+@router.get("/fee-config/current")
+@limiter.limit("60/minute")
+async def get_current_fee_config(
+    request: Request,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Gap #1 fix: Return full fee config for the shop's current version,
+    including verified_date and effective_to so UI can show fee policy badge
+    and warn when fee policy needs renewal.
+    """
+    from datetime import date
+
+    config = await db.scalar(
+        select(FeeConfig)
+        .where(
+            FeeConfig.platform == "tiktok",
+            FeeConfig.version == shop.fee_config_version,
+        )
+        .limit(1)
+    )
+    if not config:
+        # Fall back to latest if version string not found
+        config = await db.scalar(
+            select(FeeConfig)
+            .where(FeeConfig.platform == "tiktok")
+            .order_by(FeeConfig.effective_from.desc())
+            .limit(1)
+        )
+    if not config:
+        raise HTTPException(
+            404,
+            detail={"error": {"code": "FEE_CONFIG_NOT_FOUND", "message": "Không tìm thấy cấu hình phí."}},
+        )
+
+    today = date.today()
+    is_stale = config.effective_to is not None and config.effective_to < today
+
+    return {
+        "version": config.version,
+        "platform": config.platform,
+        "platform_commission_rate": str(config.platform_commission_rate),
+        "transaction_fee_rate": str(config.transaction_fee_rate),
+        "order_processing_fee_per_order": str(config.order_processing_fee_per_order),
+        "effective_from": config.effective_from.isoformat(),
+        "effective_to": config.effective_to.isoformat() if config.effective_to else None,
+        "verified_date": config.verified_date.isoformat(),
+        "notes": config.notes,
+        "is_stale": is_stale,
+    }
+
+
 # ── Price Recommender (public, no auth, rate-limited by IP) ──────────────────
 
 

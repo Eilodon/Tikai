@@ -300,6 +300,8 @@ async def process_import(ctx: dict, session_id: str) -> None:
             settlement = calculate_settlement_forecast(
                 parse_result.rows,
                 reference_date=parse_result.date_range_end,
+                ldr_rate=getattr(shop, "ldr_rate", None),
+                sfcr_rate=getattr(shop, "sfcr_rate", None),
             )
             cash_in_14d = settlement.cash_in_14d if settlement.cash_in_14d > 0 else None
             cash_in_30d = settlement.cash_in_30d if settlement.cash_in_30d > 0 else None
@@ -385,6 +387,8 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 fee_config_version=insight_data.fee_config_version,
                 cogs_coverage_pct=insight_data.cogs_coverage_pct,
                 is_net_revenue_mode=insight_data.is_net_revenue_mode,
+                # Gap #4: persist fee estimation discrepancy notes
+                fee_discrepancy_notes_json=insight_data.fee_discrepancy_notes,
             )
             db.add(snapshot)
             await db.flush()

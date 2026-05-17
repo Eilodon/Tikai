@@ -229,6 +229,92 @@ SHOPEE_COLUMN_ALIASES: dict[str, list[str]] = {
     ],
 }
 
+# ── Lazada VN column aliases ───────────────────────────────────────────────────
+# Source: Lazada Seller Center VN → Orders → Export (EN + VI headers, 2026)
+LAZADA_COLUMN_ALIASES: dict[str, list[str]] = {
+    "tiktok_order_id": [
+        "Order Number",
+        "Số đơn hàng",
+        "order number",
+    ],
+    "sku_id": [
+        "Seller SKU",
+        "Mã SKU người bán",
+        "SKU Reference",
+        "Seller SKU Reference",
+    ],
+    "sku_name": [
+        "Product Name",
+        "Tên sản phẩm",
+        "Item Name",
+    ],
+    "gmv": [
+        "Paid Price",
+        "Unit Price",
+        "Giá thanh toán",
+        "Đơn giá",
+        "Buyer Paid Price",
+    ],
+    "platform_commission": [
+        "Commission",
+        "Commission Fee",
+        "Hoa hồng",
+        "Phí hoa hồng",
+        "Lazada Commission",
+    ],
+    "affiliate_commission": [
+        "Affiliate Commission",
+        "Hoa hồng Affiliate",
+    ],
+    "voucher_cost": [
+        "Seller Voucher",
+        "Seller Discount",
+        "Voucher từ người bán",
+        "Giảm giá từ shop",
+    ],
+    "shipping_subsidy": [
+        "Shipping Fee Subsidy",
+        "Hỗ trợ phí vận chuyển",
+        "Shipping Rebate",
+    ],
+    "refund_amount": [
+        "Refund Amount",
+        "Tiền hoàn trả",
+        "Tiền hoàn lại",
+    ],
+    "order_date": [
+        "Order Creation Date",
+        "Created At",
+        "Ngày tạo đơn hàng",
+        "Ngày đặt hàng",
+        "Order Date",
+    ],
+    "status": [
+        "Order Item Status",
+        "Status",
+        "Trạng thái đơn hàng",
+        "Trạng thái",
+    ],
+    "quantity": [
+        "Units Sold",
+        "Quantity",
+        "Số lượng",
+    ],
+    "transaction_fee": [
+        "Transaction Fee",
+        "Phí giao dịch",
+    ],
+    # Lazada does not have a per-order processing fee like TikTok
+    "order_processing_fee": [],
+    "creator_id": [],
+    "creator_name": [],
+    "refund_reason_raw": [
+        "Return Reason",
+        "Lý do hoàn hàng",
+    ],
+    "parent_sku_id": [],
+}
+
 # ── Date formats ──────────────────────────────────────────────────────────────
 DATE_FORMATS = [
     "%Y-%m-%d %H:%M:%S",
@@ -267,7 +353,12 @@ def build_column_map(headers: list[str], platform: str = "tiktok") -> dict[str, 
     Returns {canonical_name: actual_header} for matched columns.
     Unknown/unmatched columns are silently ignored (parser uses defaults).
     """
-    alias_source = SHOPEE_COLUMN_ALIASES if platform == "shopee" else COLUMN_ALIASES
+    if platform == "shopee":
+        alias_source = SHOPEE_COLUMN_ALIASES
+    elif platform == "lazada":
+        alias_source = LAZADA_COLUMN_ALIASES
+    else:
+        alias_source = COLUMN_ALIASES
     headers_lower = {h.lower().strip(): h for h in headers}
     result: dict[str, str] = {}
 

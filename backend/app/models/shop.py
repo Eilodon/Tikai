@@ -43,6 +43,9 @@ class Shop(Base, TimestampMixin):
     seller_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     zns_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # v2.3.0: Inventory tracking — {sku_id: stock_on_hand (int)}
+    stock_map: Mapped[dict] = mapped_column(JSONB, nullable=True, default=dict)
+
     # Relationships
     import_sessions: Mapped[list[ImportSession]] = relationship(back_populates="shop")  # noqa: F821
     insight_snapshots: Mapped[list[InsightSnapshot]] = relationship(back_populates="shop")  # noqa: F821

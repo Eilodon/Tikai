@@ -44,6 +44,26 @@ COLUMN_FINGERPRINTS: dict[str, list[str]] = {
         "trạng thái đơn hàng",
         "ngày đặt hàng",
     ],
+    # v2.3.0: Lazada VN Seller Center — Order Export (EN headers)
+    "lazada_order_export": [
+        "order number",
+        "product name",
+        "seller sku",
+        "unit price",
+        "paid price",
+        "order item status",
+        "units sold",
+    ],
+    # v2.3.0: Lazada VN Seller Center — Order Export (VI headers)
+    "lazada_order_export_vi": [
+        "số đơn hàng",
+        "tên sản phẩm",
+        "mã sku người bán",
+        "đơn giá",
+        "giá thanh toán",
+        "trạng thái đơn hàng",
+        "ngày tạo đơn hàng",
+    ],
 }
 
 # ── Vietnamese column aliases for fingerprinting ──────────────────────────────
@@ -87,6 +107,25 @@ COLUMN_FINGERPRINTS_VI: dict[str, list[str]] = {
         "ngày đặt hàng",
         "phí hoa hồng",
     ],
+    # v2.3.0: Lazada VN (VI headers)
+    "lazada_order_export": [
+        "số đơn hàng",
+        "tên sản phẩm",
+        "mã sku người bán",
+        "đơn giá",
+        "giá thanh toán",
+        "trạng thái đơn hàng",
+        "ngày tạo đơn hàng",
+    ],
+    "lazada_order_export_vi": [
+        "số đơn hàng",
+        "tên sản phẩm",
+        "mã sku người bán",
+        "đơn giá",
+        "giá thanh toán",
+        "trạng thái đơn hàng",
+        "ngày tạo đơn hàng",
+    ],
 }
 
 # v2.0.0: Map file_type → platform
@@ -96,6 +135,8 @@ PLATFORM_MAP: dict[str, str] = {
     "settlement_export": "tiktok",
     "shopee_order_export": "shopee",
     "shopee_order_export_vi": "shopee",
+    "lazada_order_export": "lazada",
+    "lazada_order_export_vi": "lazada",
     "unknown": "unknown",
 }
 

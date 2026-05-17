@@ -124,6 +124,11 @@ async def update_shop_me(
         shop.seller_phone = body.seller_phone
     if body.zns_enabled is not None:
         shop.zns_enabled = body.zns_enabled
+    # Gap #5: dynamic settlement window rates
+    if body.ldr_rate is not None:
+        shop.ldr_rate = body.ldr_rate
+    if body.sfcr_rate is not None:
+        shop.sfcr_rate = body.sfcr_rate
 
     await db.flush()
     await db.refresh(shop)

@@ -8,6 +8,7 @@ import {
   useInsightHistory,
   useRecomputeInsight,
   useShop,
+  useCurrentFeeConfig,
 } from "@/hooks/useApi"
 import { PLSummary } from "@/components/insights/PLSummary"
 import { LeakList } from "@/components/insights/LeakList"
@@ -47,6 +48,7 @@ export default function OverviewPage() {
   const { data: history } = useInsightHistory(4)
   const { data: actionsData, isLoading: actionsLoading } = useActions()
   const { data: shop } = useShop()
+  const { data: feeConfig } = useCurrentFeeConfig()
   const complete = useCompleteAction()
   const dismiss  = useDismissAction()
   const recompute = useRecomputeInsight()
@@ -194,7 +196,7 @@ export default function OverviewPage() {
       </div>
 
       <WowInsightBanner insight={insight} />
-      <PLSummary insight={insight} />
+      <PLSummary insight={insight} feeConfig={feeConfig ?? null} />
 
       <ActivationProgress
         hasImported={true}

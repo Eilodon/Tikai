@@ -698,6 +698,51 @@ export default function SettingsPage() {
           </span>
         </div>
       </div>
+
+      {/* Trust Center — Gap #3 */}
+      <div className="bg-white rounded-xl border p-6">
+        <h2 className="font-semibold mb-1">Trung tâm bảo mật & quyền riêng tư</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Tikai xử lý dữ liệu của bạn theo tiêu chuẩn bảo mật cao nhất.
+        </p>
+        <div className="space-y-3 text-sm">
+          <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
+            <span className="text-green-600 mt-0.5">✓</span>
+            <div>
+              <p className="font-medium text-green-800">Dữ liệu cá nhân được ẩn tự động</p>
+              <p className="text-green-700 text-xs mt-0.5">
+                Tên khách hàng, số điện thoại, địa chỉ giao hàng được thay thế bằng{" "}
+                <code className="bg-green-100 px-1 rounded">***</code> trước khi AI phân tích.
+                AI không bao giờ nhìn thấy thông tin cá nhân.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
+            <span className="text-green-600 mt-0.5">✓</span>
+            <div>
+              <p className="font-medium text-green-800">Dữ liệu tài chính không bao giờ ra ngoài</p>
+              <p className="text-green-700 text-xs mt-0.5">
+                Số liệu P&L, GMV, margin của shop chỉ được xử lý bằng Rule Engine
+                deterministic — không gửi cho LLM.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
+            <span className="text-blue-600 mt-0.5">ℹ</span>
+            <div>
+              <p className="font-medium text-blue-800">Yêu cầu xóa dữ liệu</p>
+              <p className="text-blue-700 text-xs mt-0.5">
+                Bạn có thể yêu cầu xóa toàn bộ dữ liệu import bất kỳ lúc nào bằng cách
+                gửi email tới{" "}
+                <a href="mailto:privacy@tikai.vn" className="underline font-medium">
+                  privacy@tikai.vn
+                </a>
+                . Dữ liệu sẽ bị xóa trong vòng 72 giờ.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

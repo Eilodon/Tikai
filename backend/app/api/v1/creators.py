@@ -4,6 +4,7 @@ Gated: Feature.CREATOR_CRM (pro/business).
 """
 
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -17,6 +18,7 @@ from app.core.auth import get_current_shop
 from app.core.database import get_db
 from app.core.gates import Feature, get_gate_value
 from app.core.rate_limit import limiter
+from app.models.commission_snapshot import CommissionSnapshot
 from app.models.creator_profile import CreatorProfile
 from app.models.insight_snapshot import InsightSnapshot
 from app.models.shop import Shop
@@ -175,7 +177,37 @@ async def update_creator(
     if not profile:
         raise HTTPException(404, detail={"error": {"code": "NOT_FOUND"}})
 
-    for field_name, val in body.model_dump(exclude_none=True).items():
+    update_data = body.model_dump(exclude_none=True)
+
+    # Gap #2: When negotiated_rate changes, snapshot the old rate with valid_to=today
+    # so 30-day grace period can be applied when computing historical P&L.
+    if "negotiated_rate" in update_data and profile.negotiated_rate is not None:
+        old_rate = profile.negotiated_rate
+        new_rate = Decimal(str(update_data["negotiated_rate"]))
+        if old_rate != new_rate:
+            today = date.today()
+            # Close the current open snapshot (if any)
+            open_snap = await db.scalar(
+                select(CommissionSnapshot).where(
+                    CommissionSnapshot.shop_id == shop.id,
+                    CommissionSnapshot.creator_id == profile.creator_id,
+                    CommissionSnapshot.sku_id.is_(None),
+                    CommissionSnapshot.valid_to.is_(None),
+                )
+            )
+            if open_snap:
+                open_snap.valid_to = today
+            # Create new snapshot for the new rate
+            db.add(CommissionSnapshot(
+                shop_id=shop.id,
+                creator_id=profile.creator_id,
+                sku_id=None,
+                rate=new_rate,
+                valid_from=today,
+                valid_to=None,
+            ))
+
+    for field_name, val in update_data.items():
         setattr(profile, field_name, val)
 
     await db.flush()
@@ -213,3 +245,51 @@ async def sync_creators(
     await db.flush()
     log.info("creators.sync", shop_id=str(shop.id), upserted=upserted)
     return {"synced": upserted}
+
+
+@router.get("/creators/{profile_id}/rate-history")
+@limiter.limit("60/hour")
+async def get_rate_history(
+    request: Request,
+    profile_id: uuid.UUID,
+    shop: Annotated[Shop, Depends(get_current_shop)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[dict]:
+    """
+    Gap #2: Return commission rate history for a creator.
+    Shows all rate changes with valid_from/valid_to for audit and P&L reconciliation.
+    """
+    _check_creator_crm(shop)
+
+    profile = await db.scalar(
+        select(CreatorProfile).where(
+            CreatorProfile.id == profile_id,
+            CreatorProfile.shop_id == shop.id,
+        )
+    )
+    if not profile:
+        raise HTTPException(404, detail={"error": {"code": "NOT_FOUND"}})
+
+    snapshots = (
+        await db.scalars(
+            select(CommissionSnapshot)
+            .where(
+                CommissionSnapshot.shop_id == shop.id,
+                CommissionSnapshot.creator_id == profile.creator_id,
+            )
+            .order_by(CommissionSnapshot.valid_from.desc())
+        )
+    ).all()
+
+    return [
+        {
+            "id": str(s.id),
+            "creator_id": s.creator_id,
+            "sku_id": s.sku_id,
+            "rate": str(s.rate),
+            "valid_from": s.valid_from.isoformat(),
+            "valid_to": s.valid_to.isoformat() if s.valid_to else None,
+            "created_at": s.created_at.isoformat(),
+        }
+        for s in snapshots
+    ]

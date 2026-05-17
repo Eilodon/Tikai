@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.core.config import get_settings
 from app.models import (  # noqa: F401
     ai_action,
+    commission_snapshot,
+    creator_profile,
     fee_config,
     import_session,
     insight_snapshot,

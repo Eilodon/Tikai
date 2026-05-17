@@ -3,7 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String
+from decimal import Decimal
+
+from sqlalchemy import Boolean, DateTime, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,6 +47,11 @@ class Shop(Base, TimestampMixin):
 
     # v2.3.0: Inventory tracking — {sku_id: stock_on_hand (int)}
     stock_map: Mapped[dict] = mapped_column(JSONB, nullable=True, default=dict)
+
+    # Gap #5: Dynamic settlement window — LDR (Late Dispatch Rate) and SFCR (Seller Full Credit Rate)
+    # from TikTok Seller Center. Used to pick settlement tier: Tier1=7d, Tier2=14d, Tier3=31d.
+    ldr_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    sfcr_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
 
     # Relationships
     import_sessions: Mapped[list[ImportSession]] = relationship(back_populates="shop")  # noqa: F821

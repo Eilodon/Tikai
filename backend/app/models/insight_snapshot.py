@@ -49,6 +49,8 @@ class InsightSnapshot(Base, TimestampMixin):
     top_skus_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     top_creators_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     action_triggers_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    # Gap #4: orders where platform fees were estimated rather than parsed from CSV
+    fee_discrepancy_notes_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
     # Metadata
     rule_engine_version: Mapped[str] = mapped_column(String(20), nullable=False)

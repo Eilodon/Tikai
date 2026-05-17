@@ -5,7 +5,7 @@ Gated: Feature.CREATOR_CRM (pro/business).
 
 import uuid
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -102,11 +102,13 @@ def _profile_to_response(p: CreatorProfile) -> CreatorProfileResponse:
 
 class CreatorProfileUpdateRequest(BaseModel):
     status: str | None = Field(None, pattern="^(active|paused|blacklisted|vip)$")
-    tags: list[str] | None = None
+    tags: list[Annotated[str, Field(max_length=50)]] | None = None
     negotiated_rate: Decimal | None = Field(None, ge=0, le=1)
     internal_note: str | None = Field(None, max_length=1000)
-    contact_zalo: str | None = Field(None, max_length=50)
-    contact_email: str | None = Field(None, max_length=200)
+    # Vietnamese mobile: 10–11 digits starting with 0
+    contact_zalo: str | None = Field(None, max_length=15, pattern=r"^0\d{9,10}$")
+    # Basic email format — same package as notification_email on Shop
+    contact_email: str | None = Field(None, max_length=200, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 @router.get("/creators")
@@ -115,8 +117,8 @@ async def list_creators(
     request: Request,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    status: str | None = Query(None),
-    performance_label: str | None = Query(None),
+    status: Literal["active", "paused", "blacklisted", "vip"] | None = Query(None),
+    performance_label: Literal["star", "break_even", "losing"] | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
 ) -> list[CreatorProfileResponse]:
     _check_creator_crm(shop)

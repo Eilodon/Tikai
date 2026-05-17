@@ -789,8 +789,8 @@ async def export_snapshot_csv(
         ]
     )
     for s in top_skus:
-        refund_pct = f"{float(s.refund_rate) * 100:.1f}"
-        margin_pct = f"{float(s.margin_pct) * 100:.1f}" if s.margin_pct is not None else ""
+        refund_pct = f"{s.refund_rate * 100:.1f}"
+        margin_pct = f"{s.margin_pct * 100:.1f}" if s.margin_pct is not None else ""
         writer.writerow(
             [
                 _safe_csv_cell(s.sku_id),

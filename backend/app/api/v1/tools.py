@@ -65,9 +65,8 @@ async def _get_latest_fee_config_data(db: AsyncSession, platform: str = "tiktok"
 
 class PriceRecommendRequest(BaseModel):
     cogs_per_unit: Decimal
-    target_margin_pct: Decimal  # 0.05 → 0.50
-    # BUG-H2 FIX: negative rates violated min_price >= cogs invariant (public endpoint, no auth).
-    # ge=0 prevents crafted inputs like affiliate_rate=-1.0 from returning min_price < COGS.
+    # BUG-H2 FIX: negative rates / >100% margins violated min_price >= cogs invariant.
+    target_margin_pct: Decimal = Field(..., ge=Decimal("0.01"), le=Decimal("0.99"))
     affiliate_rate: Decimal = Field(Decimal("0.10"), ge=Decimal("0"), le=Decimal("0.50"))
     voucher_rate: Decimal = Field(Decimal("0.05"), ge=Decimal("0"), le=Decimal("0.50"))
 
@@ -236,8 +235,8 @@ async def price_recommend_public(
 class SimulateRequest(BaseModel):
     snapshot_id: uuid.UUID
     sku_id: str
-    affiliate_rate: Decimal | None = None
-    voucher_rate: Decimal | None = None
+    affiliate_rate: Decimal | None = Field(None, ge=Decimal("0"), le=Decimal("0.50"))
+    voucher_rate: Decimal | None = Field(None, ge=Decimal("0"), le=Decimal("0.50"))
     price_change_pct: Decimal | None = Field(None, ge=Decimal("-0.5"), le=Decimal("0.5"))
 
 
@@ -311,8 +310,8 @@ class CampaignSKUInput(BaseModel):
     sku_id: str
     planned_units: int = Field(..., gt=0, le=100_000)
     price_change_pct: Decimal = Field(Decimal("0"), ge=Decimal("-0.5"), le=Decimal("0.5"))
-    affiliate_rate: Decimal | None = None
-    voucher_rate: Decimal | None = None
+    affiliate_rate: Decimal | None = Field(None, ge=Decimal("0"), le=Decimal("0.50"))
+    voucher_rate: Decimal | None = Field(None, ge=Decimal("0"), le=Decimal("0.50"))
 
 
 class SimulateCampaignRequest(BaseModel):

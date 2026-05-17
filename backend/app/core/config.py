@@ -180,13 +180,17 @@ class Settings(BaseSettings):
         """Legacy flat limit — kept for backward compat. Prefer ai_budget_for_tier()."""
         return Decimal(self.ai_max_cost_per_shop_per_month_usd)
 
+    # Per-tier monthly dollar budget for AI (enterprise same as business — no higher limit yet)
+    ai_max_cost_per_month_usd_enterprise: str = "1.00"
+
     def ai_budget_for_tier(self, tier: str) -> Decimal:
         """Return the monthly AI dollar budget for a given subscription tier."""
         mapping = {
-            "free": self.ai_max_cost_per_month_usd_free,
-            "pro": self.ai_max_cost_per_month_usd_pro,
-            "pro_trial": self.ai_max_cost_per_month_usd_pro,  # trial gets pro budget
-            "business": self.ai_max_cost_per_month_usd_business,
+            "free":       self.ai_max_cost_per_month_usd_free,
+            "pro":        self.ai_max_cost_per_month_usd_pro,
+            "pro_trial":  self.ai_max_cost_per_month_usd_pro,   # trial gets pro budget
+            "business":   self.ai_max_cost_per_month_usd_business,
+            "enterprise": self.ai_max_cost_per_month_usd_enterprise,
         }
         return Decimal(mapping.get(tier, self.ai_max_cost_per_month_usd_free))
 

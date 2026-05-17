@@ -40,16 +40,18 @@ async def create_shop(
     )
 
     if shop_count > 0:
-        # Get any existing shop to check the tier limit
-        any_shop = await db.scalar(select(Shop).where(Shop.owner_id == current_user.id))
+        # Get any existing shop to check the tier limit (.limit(1) — all user shops share same tier)
+        any_shop = await db.scalar(
+            select(Shop).where(Shop.owner_id == current_user.id).limit(1)
+        )
         if any_shop:
             max_shops: int = int(get_gate_value(any_shop, Feature.MULTI_SHOP) or 1)
             if shop_count >= max_shops:
                 tier = getattr(any_shop, "subscription_tier", "free") or "free"
                 if tier == "free":
-                    detail_msg = "Gói Free chỉ hỗ trợ 1 shop. Nâng cấp lên Pro (99k/tháng) để thêm tối đa 3 shops."
+                    detail_msg = "Gói Free chỉ hỗ trợ 1 shop. Nâng cấp lên Pro (299k/tháng) để thêm tối đa 3 shops."
                 elif tier == "pro":
-                    detail_msg = "Gói Pro hỗ trợ tối đa 3 shops. Nâng cấp lên Business (299k/tháng) để thêm nhiều hơn."
+                    detail_msg = "Gói Pro hỗ trợ tối đa 3 shops. Nâng cấp lên Business (799k/tháng) để thêm nhiều hơn."
                 else:
                     detail_msg = f"Đã đạt giới hạn {max_shops} shops của gói hiện tại."
                 raise HTTPException(

@@ -89,14 +89,15 @@ async def reconcile_settlement_upload(
         )
 
     # Read file with size guard
+    # BUG-M3 FIX: check BEFORE appending to avoid holding max+chunk_size bytes in memory.
+    # Old code: append then check → up to 25MB spike (20MB limit + 5MB chunk) per request.
     file_bytes = b""
     chunk_size = 5 * 1024 * 1024
     while True:
         chunk = await file.read(chunk_size)
         if not chunk:
             break
-        file_bytes += chunk
-        if len(file_bytes) > MAX_SETTLEMENT_SIZE_BYTES:
+        if len(file_bytes) + len(chunk) > MAX_SETTLEMENT_SIZE_BYTES:
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -106,6 +107,7 @@ async def reconcile_settlement_upload(
                     }
                 },
             )
+        file_bytes += chunk
 
     filename = file.filename or "settlement.csv"
     ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""

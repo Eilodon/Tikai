@@ -46,9 +46,12 @@ class Settings(BaseSettings):
     ai_top_n_skus: int = 20
     ai_top_n_refund_reasons: int = 200
     # F-1B-06: explicit per-tier AI call limits (replaces magic * 5 multiplier)
-    ai_max_calls_per_import_free: int = 3
+    # BUG-L2 FIX: gates.py advertises Free=5 but config was 3. Aligned to 5.
+    # BUG-M1 FIX: enterprise tier added (gates.py Feature.AI_CALLS_PER_IMPORT: 20).
+    ai_max_calls_per_import_free: int = 5
     ai_max_calls_per_import_pro: int = 10
     ai_max_calls_per_import_business: int = 15
+    ai_max_calls_per_import_enterprise: int = 20
 
     # Redis
     redis_url: str = "redis://localhost:6379"
@@ -177,13 +180,17 @@ class Settings(BaseSettings):
         """Legacy flat limit — kept for backward compat. Prefer ai_budget_for_tier()."""
         return Decimal(self.ai_max_cost_per_shop_per_month_usd)
 
+    # Per-tier monthly dollar budget for AI (enterprise same as business — no higher limit yet)
+    ai_max_cost_per_month_usd_enterprise: str = "1.00"
+
     def ai_budget_for_tier(self, tier: str) -> Decimal:
         """Return the monthly AI dollar budget for a given subscription tier."""
         mapping = {
-            "free": self.ai_max_cost_per_month_usd_free,
-            "pro": self.ai_max_cost_per_month_usd_pro,
-            "pro_trial": self.ai_max_cost_per_month_usd_pro,  # trial gets pro budget
-            "business": self.ai_max_cost_per_month_usd_business,
+            "free":       self.ai_max_cost_per_month_usd_free,
+            "pro":        self.ai_max_cost_per_month_usd_pro,
+            "pro_trial":  self.ai_max_cost_per_month_usd_pro,   # trial gets pro budget
+            "business":   self.ai_max_cost_per_month_usd_business,
+            "enterprise": self.ai_max_cost_per_month_usd_enterprise,
         }
         return Decimal(mapping.get(tier, self.ai_max_cost_per_month_usd_free))
 

@@ -186,8 +186,8 @@ async def update_creator(
         new_rate = Decimal(str(update_data["negotiated_rate"]))
         if old_rate != new_rate:
             today = date.today()
-            # Close the current open snapshot (if any)
-            open_snap = await db.scalar(
+            # Close ALL open snapshots (not just first) to handle any data corruption
+            open_snaps_result = await db.scalars(
                 select(CommissionSnapshot).where(
                     CommissionSnapshot.shop_id == shop.id,
                     CommissionSnapshot.creator_id == profile.creator_id,
@@ -195,7 +195,7 @@ async def update_creator(
                     CommissionSnapshot.valid_to.is_(None),
                 )
             )
-            if open_snap:
+            for open_snap in open_snaps_result.all():
                 open_snap.valid_to = today
             # Create new snapshot for the new rate
             db.add(CommissionSnapshot(

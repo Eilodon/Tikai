@@ -1,8 +1,8 @@
 # Tikai
 
-AI-powered P&L analytics for Vietnamese TikTok Shop and Shopee sellers. Tikai parses platform CSV/XLSX exports, calculates true profitability per SKU and creator, detects revenue leaks, and generates actionable Vietnamese-language recommendations backed by Claude.
+AI-powered P&L analytics for Vietnamese TikTok Shop, Shopee, and Lazada sellers. Tikai parses platform CSV/XLSX exports, calculates true profitability per SKU and creator, detects revenue leaks, tracks inventory, and generates actionable Vietnamese-language recommendations backed by Claude.
 
-**Version:** 2.2.0 | **Stack:** FastAPI · Next.js 15 · PostgreSQL · Redis · Anthropic API
+**Version:** 2.3.0 | **Stack:** FastAPI · Next.js 15 · PostgreSQL · Redis · Anthropic API
 
 ---
 
@@ -11,7 +11,7 @@ AI-powered P&L analytics for Vietnamese TikTok Shop and Shopee sellers. Tikai pa
 ### P&L Engine
 - **Full cost breakdown** — Net revenue per SKU/creator after platform commission, transaction fees (6% from 2026-05-09), order processing fee (3,000 VND/order from 2025-10-27), vouchers, shipping subsidies, refunds, and COGS
 - **Time-aware fee config** — Correct fee rates applied per-order by `order_date` using `effective_from`/`effective_to` date ranges — mid-period fee changes apply correctly to each individual order, not retroactively to the whole batch
-- **Multi-platform parsing** — TikTok and Shopee exports parsed with platform-aware column alias dicts (EN + Vietnamese column names). Settlement exports parsed for cash reconciliation
+- **Multi-platform parsing** — TikTok Shop, Shopee, and Lazada exports parsed with platform-aware column alias dicts (EN + Vietnamese column names). Settlement exports parsed for cash reconciliation
 - **COGS cascade for Shopee variants** — If a variation SKU (e.g. `SHIRT-RED`) has no COGS entry, automatically looks up its parent SKU (`SHIRT-100`) — no need to enter COGS for every color/size variant separately
 - **Quantity-accurate COGS** — COGS is calculated as `cogs_per_unit × total_units_sold` (not order count), correctly handling multi-unit orders
 
@@ -22,6 +22,12 @@ AI-powered P&L analytics for Vietnamese TikTok Shop and Shopee sellers. Tikai pa
 - **Industry Benchmark** — Compare shop metrics (refund rate, margin %, fee burden %) against YouNet ECI 2025 benchmarks for 7 TikTok Shop categories (Pro+)
 - **AI action recommendations** — Claude explains each issue in Vietnamese and suggests a concrete next step, with full guardrail pipeline (PII mask → injection filter → invented-number validation → fallback template)
 
+### Inventory Tracking
+- **Stock level management** — Set `stock_on_hand` per SKU via API; stored in `shop.stock_map` JSONB (no separate table)
+- **Days-to-stockout forecast** — `days_to_stockout = stock_on_hand / avg_daily_units_sold_30d`; four statuses: `critical` (≤7 days), `warning` (≤14 days), `ok`, `no_stock_data`
+- **Sell-rate from live orders** — Average computed from confirmed (non-refunded/cancelled) orders in the last 30 days — no manual input required
+- **Priority sort** — `GET /v1/inventory/status` returns SKUs sorted critical-first so sellers see at-risk stock immediately (Pro+)
+
 ### Simulator & Planning Tools
 - **What-If Simulator** — In-memory P&L delta for a single SKU: change affiliate rate, voucher rate, or price ±N% and see net revenue and margin impact instantly (no DB writes)
 - **Campaign Pre-Check** — Multi-SKU campaign projector: enter planned units + rate overrides per SKU, get per-SKU and portfolio net revenue/margin projections before the campaign goes live
@@ -30,6 +36,7 @@ AI-powered P&L analytics for Vietnamese TikTok Shop and Shopee sellers. Tikai pa
 ### Data Management
 - **COGS management** — Manual upsert via JSON or bulk CSV upload (`sku_id, cogs_per_unit`) with EN/VI column name support, per-row error reporting, 500-SKU cap
 - **CSV Export** — Download full SKU P&L table from any snapshot as CSV (Pro+)
+- **Misa-compatible export** — `GET /insights/{id}/export.csv?format=misa` returns Vietnamese column headers (Mã SKU, Doanh thu gộp, Giá vốn, Lợi nhuận gộp, Tỷ suất lợi nhuận %) matching the Misa accounting format — accountants can import directly (Pro+)
 - **Recompute** — Re-run Rule Engine on existing orders after COGS update, no re-upload needed (Pro+)
 - **Settlement parsing** — Parses TikTok settlement exports including `transaction_type`, `fee_amount`, `description`, `adjustment_type`, `seller_sku` for reconciliation
 
@@ -43,6 +50,11 @@ AI-powered P&L analytics for Vietnamese TikTok Shop and Shopee sellers. Tikai pa
 - **Auto-sync on import** — Every successful file import updates `creator_profiles` from the latest snapshot's `top_creators` data — no manual sync needed
 - **Performance tracking** — GMV 30d, commission paid, revenue efficiency, refund rate, performance label (star / break_even / losing), suggested max commission rate
 - **Commission waste alert** — Highlights commission already paid on subsequently-refunded orders (TikTok does not claw back)
+
+### MCN & Multi-shop
+- **MCN aggregate view** — `GET /v1/insights/aggregate` returns total GMV, net revenue, refund rate and per-shop breakdown across all shops owned by the same account (Business+)
+- **Per-shop isolation** — Each shop has independent P&L, creators, COGS, and settings; row isolation enforced at JWT level
+- **Multi-shop tiers** — Free: 1 shop, Pro: 3 shops, Business: 999 shops, Enterprise: 9,999 shops
 
 ### Notifications & Alerts
 - **Daily Web Push** — ARQ cron at 08:15 VN time; sends browser push to shops with active subscription when a top leak exceeds 100,000 VND or any SKU is critical; Redis idempotency cap of 1 push per shop per day
@@ -85,16 +97,20 @@ Backend (FastAPI)
   /v1/imports                              — upload CSV/XLSX → enqueue ARQ job (ARQ _job_id dedup)
   /v1/imports/{session_id}                 — poll status
   /v1/insights/latest                      — latest snapshot
-  /v1/insights/history                     — week-over-week history (tier-capped: 4/12/52 weeks)
+  /v1/insights/history                     — week-over-week history (tier-capped: 4/12/52/104 weeks)
   /v1/insights/{id}                        — snapshot by ID
   /v1/insights/{id}/benchmark              — industry benchmark comparison (Pro+)
-  /v1/insights/{id}/export.csv             — export SKU P&L as CSV (Pro+)
+  /v1/insights/{id}/export.csv             — SKU P&L as CSV; ?format=misa for Misa-compatible output (Pro+)
   /v1/insights/recompute                   — re-run Rule Engine on existing orders (Pro+)
+  /v1/insights/aggregate                   — cross-shop P&L aggregate for MCN/multi-brand (Business+)
   /v1/actions                              — list / complete / dismiss AI recommendations
   /v1/shops/me                             — shop profile + notification settings
   /v1/shops/me/notifications               — update email digest settings
   /v1/cogs                                 — get / upsert COGS per SKU
   /v1/cogs/bulk-import                     — bulk COGS upload via CSV
+  /v1/inventory/set-stock                  — set stock_on_hand per SKU (Pro+)
+  /v1/inventory/set-stock/{sku_id}         — DELETE a stock entry
+  /v1/inventory/status                     — days-to-stockout per SKU, sorted critical-first (Pro+)
   /v1/tools/price-recommend                — reverse P&L: COGS + margin → min price
   /v1/tools/simulate                       — what-if P&L delta for 1 SKU (no DB writes)
   /v1/tools/simulate-campaign              — multi-SKU campaign pre-check (no DB writes)
@@ -118,9 +134,9 @@ Backend (FastAPI)
         │     simulator           — single/multi-SKU what-if P&L delta
         │
         ├── Parsers (app/services/parser/)
-        │     detector            — file type + platform detection (TikTok / Shopee / unknown)
+        │     detector            — file type + platform detection (TikTok / Shopee / Lazada / unknown)
         │     normalizer          — column alias resolution (EN + VI names, per platform)
-        │     order_parser        — parse_order_csv() (TikTok + Shopee)
+        │     order_parser        — parse_order_csv() (TikTok + Shopee + Lazada)
         │     settlement_parser   — parse_settlement_csv() (payout + extended fields)
         │     transaction_parser  — parse_transaction_csv()
         │
@@ -152,7 +168,7 @@ Backend (FastAPI)
   ┌─────┴──────┬────────────┐
   PostgreSQL   Redis        Supabase
   (data,       (ARQ queue,  (auth + JWT
-  15 migrations) AI budget,   + file storage)
+  18 migrations) AI budget,   + file storage)
                daily_alert
                idempotency)
 ```
@@ -161,20 +177,25 @@ Backend (FastAPI)
 
 ## Subscription Tiers
 
-| Feature | Free | Pro | Business |
-|---|---|---|---|
-| AI calls per import | 3 | 10 | 15 |
-| AI monthly budget | $0.15 | $0.50 | $1.00 |
-| History (weeks) | 4 | 12 | 52 |
-| Shops | 1 | 3 | 999 |
-| Re-analysis / Recompute | — | ✓ | ✓ |
-| Industry Benchmark | — | ✓ | ✓ |
-| CSV Export | — | ✓ | ✓ |
-| Settlement Reconciliation | — | ✓ | ✓ |
-| Creator CRM | — | ✓ | ✓ |
-| Daily Web Push Alerts | ✓ | ✓ | ✓ |
-| Zalo ZNS Notifications | — | ✓ | ✓ |
-| Shopee / Lazada import | — | — | ✓ |
+| Feature | Free | Pro | Business | Enterprise |
+|---|---|---|---|---|
+| AI calls per import | 5 | 10 | 15 | 20 |
+| AI monthly budget | $0.15 | $0.50 | $1.00 | $1.00 |
+| History (weeks) | 4 | 12 | 52 | 104 |
+| Shops | 1 | 3 | 999 | 9,999 |
+| Re-analysis / Recompute | — | ✓ | ✓ | ✓ |
+| Industry Benchmark | — | ✓ | ✓ | ✓ |
+| CSV Export | — | ✓ | ✓ | ✓ |
+| Misa Export | — | ✓ | ✓ | ✓ |
+| Settlement Reconciliation | — | ✓ | ✓ | ✓ |
+| Creator CRM | — | ✓ | ✓ (full) | ✓ (full) |
+| Inventory Tracking | — | ✓ | ✓ | ✓ |
+| Daily Web Push Alerts | ✓ | ✓ | ✓ | ✓ |
+| Zalo ZNS Notifications | — | ✓ | ✓ | ✓ |
+| Shopee / Lazada import | — | ✓ | ✓ | ✓ |
+| MCN Aggregate View | — | — | ✓ | ✓ |
+
+> Enterprise tier targets MCN operators and multi-brand agencies managing large creator/shop portfolios.
 
 ---
 
@@ -323,7 +344,7 @@ alembic downgrade -1           # undo last migration
 alembic revision --autogenerate -m "add_column_x"   # create new
 ```
 
-There are currently **17 migrations** (0001–0017). Migration env uses `pg_advisory_lock` to prevent concurrent execution across multiple replicas — only one process runs migrations at a time; others wait then detect no pending work.
+There are currently **18 migrations** (0001–0018). Migration env uses `pg_advisory_lock` to prevent concurrent execution across multiple replicas — only one process runs migrations at a time; others wait then detect no pending work.
 
 ---
 
@@ -339,14 +360,14 @@ There are currently **17 migrations** (0001–0017). Migration env uses `pg_advi
 ### Pre-deploy Checklist
 
 ```
-□ alembic upgrade head ran against production DB (migrations 0001–0017)
+□ alembic upgrade head ran against production DB (migrations 0001–0018)
 □ ALLOWED_ORIGINS set to production frontend URL
 □ ANTHROPIC_API_KEY configured
 □ SENTRY_DSN configured
 □ VAPID_PRIVATE_KEY + VAPID_PUBLIC_KEY configured for Web Push (optional but recommended)
 □ ZALO_OA_ID + ZALO_ZNS_ACCESS_TOKEN set if Zalo ZNS is required (optional)
 □ Worker service running (check Railway logs for trigger_weekly_receipts + trigger_daily_alerts crons)
-□ GET /healthz → {"status":"ok","version":"2.2.0"}
+□ GET /healthz → {"status":"ok","version":"2.3.0"}
 □ GET /readyz  → {"status":"ready","db":"ok","redis":"ok"}
 ```
 
@@ -367,6 +388,10 @@ There are currently **17 migrations** (0001–0017). Migration env uses `pg_advi
 **COGS uses total_quantity, not order_count** — `pl_calculator` tracks `total_quantity` (sum of `row.quantity` across all rows for an SKU) separately from `order_count`. Simulator and recompute use `total_quantity` for COGS calculation. One order with 3 units costs 3× COGS, not 1×.
 
 **COGS cascade for Shopee variants** — `RawOrderRow` includes `parent_sku_id` (populated from "Parent SKU Reference No." / "Mã SKU cha" columns). `pl_calculator` checks `cogs_map[sku_id]` first, falls back to `cogs_map[parent_sku_id]` if not found. Variation-specific COGS takes precedence when both exist.
+
+**Inventory sell-rate window** — `GET /v1/inventory/status` uses a fixed 30-day lookback (`_LOOKBACK_DAYS = 30`) against confirmed (non-cancelled/refunded) orders. Changing the window changes the sell-rate denominator; the constant is intentionally named and isolated in `inventory.py` for easy adjustment.
+
+**Platform-aware column resolution** — `build_column_map(headers, platform)` selects among three alias dicts: `COLUMN_ALIASES` (TikTok), `SHOPEE_COLUMN_ALIASES`, and `LAZADA_COLUMN_ALIASES`. `detect_file_type()` returns the platform as the third element of its 3-tuple return so the parser can pass it directly to `build_column_map` — no second-guessing required downstream.
 
 **Worker per-shop isolation** — `trigger_weekly_receipts` (cron) queries all active shops and enqueues one `process_weekly_receipt_for_shop(shop_id, week_label)` job per shop. Each job runs in its own ARQ slot with full `job_timeout=300s`. One shop failing doesn't affect others. `_job_id = "weekly-receipt-{shop_id}-{week_label}"` prevents duplicate processing if the cron re-fires (e.g. after worker restart).
 
@@ -394,7 +419,7 @@ There are currently **17 migrations** (0001–0017). Migration env uses `pg_advi
 
 **AI hallucination rate** — `validate_numbers_in_text` logs `ai.invented_numbers` on validation failure. Repeated failures for the same function indicate model drift or prompt regression.
 
-**Shopee fee config** — Startup logs `startup.fee_config_missing` (CRITICAL level) if no Shopee `FeeConfig` exists in the DB. Without it, Shopee imports silently fall back to TikTok rates → wrong P&L. `recompute_insight` logs `recompute_insight.no_platform_fee_config` (WARNING) on fallback.
+**Shopee / Lazada fee config** — Startup logs `startup.fee_config_missing` (CRITICAL level) if no Shopee `FeeConfig` exists in the DB. Without it, Shopee/Lazada imports silently fall back to TikTok rates → wrong P&L. `recompute_insight` logs `recompute_insight.no_platform_fee_config` (WARNING) on fallback. Ensure a Lazada fee config row exists in `fee_configs` before enabling Lazada imports in production.
 
 **Weekly receipts** — `trigger_weekly_receipts` logs `weekly_receipts.trigger.done` with `enqueued=N`. Each shop job logs `weekly_receipt_for_shop.done` on success or `weekly_receipt_for_shop.no_actions` if the shop had no completed actions. Check for `weekly_receipt_for_shop.shop_not_found` if jobs are being enqueued for deleted shops.
 
@@ -404,6 +429,7 @@ There are currently **17 migrations** (0001–0017). Migration env uses `pg_advi
 
 | Version | Summary |
 |---|---|
+| 2.3.0 | **Lazada CSV parser** — EN + VI fingerprints + `LAZADA_COLUMN_ALIASES`; platform auto-detected, 3rd sàn supported. **Inventory tracking** — `POST /v1/inventory/set-stock`, `GET /v1/inventory/status` with days-to-stockout from 30-day sell rate; `stock_map` JSONB on Shop model; migration 0018. **MCN aggregate view** — `GET /v1/insights/aggregate` cross-shop P&L for Business+ (GMV, net revenue, refund rate with per-shop breakdown). **Enterprise tier** — 9,999 shops, 2-year history, 20 AI calls/import; `MCN_AGGREGATE` feature gate. **Misa export** — `?format=misa` on export endpoint returns Vietnamese accounting headers compatible with Misa import. Pricing messages updated to 299k/799k/month. |
 | 2.2.0 | Settlement reconciliation (`POST /v1/reconcile`, `/doi-soat` page). Creator CRM (`/creators` page, auto-sync on import). Daily Web Push alerts (ARQ cron, Redis idempotency). Zalo ZNS scaffolding. WowScreen 3-way conditional. Quantified COGS nudge in Overview. Nav: Creators + Đối soát links. 17 new unit tests. |
 | 2.1.0 | BUG-SIM-01: simulator now uses `total_quantity` (units sold) instead of `order_count` for COGS. Settlement parser extended with `transaction_type`, `fee_amount`, `description`, `adjustment_type`, `seller_sku` columns. Worker converted to per-shop ARQ jobs (`trigger_weekly_receipts` + `process_weekly_receipt_for_shop`). New: `GET /insights/{id}/export.csv` (CSV export, Pro+), `POST /tools/simulate-campaign` (multi-SKU campaign pre-check), `POST /cogs/bulk-import` (CSV COGS upload). |
 | 2.0.2 | Per-order FeeConfig selection (mid-period fee changes apply per-row, not retroactively). Shopee COGS cascade (parent→variation SKU lookup). Benchmark versioning (`benchmark_version` + `last_updated` in API). Tier-aware AI budget ($0.15/$0.50/$1.00 for free/pro/business). Migration `pg_advisory_lock` for multi-replica safety. ARQ `_job_id` dedup on import enqueue. SKU Health Score, Creator Scorecard, What-If Simulator, Price Recommender, Industry Benchmark, Cash Flow Timeline. |

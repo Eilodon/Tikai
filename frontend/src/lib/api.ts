@@ -217,6 +217,9 @@ export interface UpdateShopRequest {
   category?: string | null
   seller_phone?: string | null
   zns_enabled?: boolean
+  // Gap #5: dynamic settlement window — pass as decimal (0.023 = 2.3%)
+  ldr_rate?: number | null
+  sfcr_rate?: number | null
 }
 
 export interface ImportSessionResponse {

@@ -200,7 +200,7 @@ async def reconcile_settlement_upload(
         shop_id=str(shop.id),
         snapshot_id=str(resolved_snapshot_id),
         verdict=result.verdict,
-        gap_pct=float(gap_pct),
+        gap_pct=str(gap_pct),
         rows=len(rows),
     )
 

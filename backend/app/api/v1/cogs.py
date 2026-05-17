@@ -15,7 +15,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_shop
@@ -73,11 +73,13 @@ async def get_cogs(
     v1.0.0: Capped at MAX_COGS_SKUS (500) — unbounded query could return thousands
     of rows for high-volume shops and degrade the settings page load time.
     """
+    # Sort by total GMV desc so high-revenue SKUs appear first — sellers fill those
+    # first to cover the majority of revenue with minimal effort.
     result = await db.execute(
-        select(Order.sku_id, Order.sku_name)
+        select(Order.sku_id, Order.sku_name, func.sum(Order.gmv).label("total_gmv"))
         .where(Order.shop_id == shop.id)
-        .distinct()
-        .order_by(Order.sku_name)
+        .group_by(Order.sku_id, Order.sku_name)
+        .order_by(func.sum(Order.gmv).desc())
         .limit(MAX_COGS_SKUS)
     )
     sku_rows = result.fetchall()
@@ -103,10 +105,10 @@ async def download_cogs_template(
     Seller opens in Excel, fills in cogs_per_unit, uploads via /cogs/bulk-import.
     """
     result = await db.execute(
-        select(Order.sku_id, Order.sku_name)
+        select(Order.sku_id, Order.sku_name, func.sum(Order.gmv).label("total_gmv"))
         .where(Order.shop_id == shop.id)
-        .distinct()
-        .order_by(Order.sku_name)
+        .group_by(Order.sku_id, Order.sku_name)
+        .order_by(func.sum(Order.gmv).desc())
         .limit(MAX_COGS_SKUS)
     )
     sku_rows = result.fetchall()

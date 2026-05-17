@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useShop } from "@/hooks/useApi"
 import { shopsApi, cogsApi, insightsApi, notificationsApi, COGSItemResponse } from "@/lib/api"
 import { getAuthToken } from "@/lib/supabase"
@@ -15,9 +15,10 @@ function COGSTable({ token }: { token: string }) {
   const [rows, setRows] = useState<COGSRow[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [saveResult, setSaveResult] = useState<"saved" | "recomputed" | null>(null)
   const [totalSkus, setTotalSkus] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map()).current
 
   useEffect(() => {
     cogsApi.getAll(token)
@@ -35,15 +36,33 @@ function COGSTable({ token }: { token: string }) {
     )
   }
 
-  const dirtyRows = rows.filter((r) => r.dirty && r.cogs_per_unit !== "" && r.cogs_per_unit !== "0")
+  // T1-5: allow dirty rows with "0" so users can clear a previously-set COGS
+  const dirtyRows = rows.filter((r) => r.dirty)
   const hasDirty = dirtyRows.length > 0
+
+  // T1-4: coverage counts in-progress dirty inputs too, not just saved state
   const coveredCount = rows.filter((r) => parseFloat(r.cogs_per_unit) > 0).length
   const coveragePct = rows.length > 0 ? (coveredCount / rows.length) * 100 : 0
 
+  // T1-3: keyboard navigation — Enter/ArrowDown advances to next row input
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>, skuId: string) {
+    if (e.key !== "Enter" && e.key !== "ArrowDown" && e.key !== "ArrowUp") return
+    e.preventDefault()
+    const idx = rows.findIndex((r) => r.sku_id === skuId)
+    const nextIdx = e.key === "ArrowUp" ? idx - 1 : idx + 1
+    if (nextIdx >= 0 && nextIdx < rows.length) {
+      inputRefs.get(rows[nextIdx].sku_id)?.focus()
+    } else if (e.key === "Enter" && hasDirty) {
+      handleSave()
+    }
+  }
+
+  // T1-1: save + auto-recompute in a single action — no separate nudge step
   async function handleSave() {
     if (!hasDirty) return
     setSaving(true)
     setError(null)
+    setSaveResult(null)
     try {
       await cogsApi.upsert(token, dirtyRows.map((r) => ({
         sku_id: r.sku_id,
@@ -51,8 +70,11 @@ function COGSTable({ token }: { token: string }) {
         cogs_per_unit: r.cogs_per_unit,
       })))
       setRows((prev) => prev.map((r) => ({ ...r, dirty: false })))
-      setSaved(true)
-      setTimeout(() => setSaved(false), 4000)
+      setSaveResult("saved")
+      // Fire-and-forget recompute — don't block UX, ignore 402 (free tier)
+      insightsApi.recompute(token)
+        .then(() => setSaveResult("recomputed"))
+        .catch(() => {/* free tier: margin will update on next scheduled compute */})
     } catch {
       setError("Lưu thất bại. Vui lòng thử lại.")
     } finally {
@@ -117,9 +139,11 @@ function COGSTable({ token }: { token: string }) {
                 </td>
                 <td className="px-4 py-2.5">
                   <input
+                    ref={(el) => { if (el) inputRefs.set(row.sku_id, el) }}
                     type="number" min="0" step="1000" placeholder="VD: 50000"
                     value={row.cogs_per_unit === "0" ? "" : row.cogs_per_unit}
                     onChange={(e) => updateRow(row.sku_id, e.target.value || "0")}
+                    onKeyDown={(e) => handleKeyDown(e, row.sku_id)}
                     className="w-full text-right border rounded-lg px-2.5 py-1.5 text-sm
                                focus:outline-none focus:ring-2 focus:ring-blue-500
                                [appearance:textfield] bg-white"
@@ -141,50 +165,16 @@ function COGSTable({ token }: { token: string }) {
             {saving ? "Đang lưu..." : `Lưu ${dirtyRows.length} thay đổi`}
           </button>
         )}
-        {saved && <span className="text-sm text-green-700 font-medium">✓ Đã lưu — nhớ Tính lại P&L để cập nhật margin</span>}
+        {saveResult === "recomputed" && (
+          <span className="text-sm text-green-700 font-medium">
+            ✓ Đã lưu &amp; tính lại —{" "}
+            <a href="/overview" className="underline">xem margin mới</a>
+          </span>
+        )}
+        {saveResult === "saved" && (
+          <span className="text-sm text-green-700 font-medium">✓ Đã lưu — đang tính lại margin...</span>
+        )}
       </div>
-
-      {saved && <RecomputeNudge token={token} />}
-    </div>
-  )
-}
-
-function RecomputeNudge({ token }: { token: string }) {
-  const [recomputing, setRecomputing] = useState(false)
-  const [done, setDone] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  async function handleRecompute() {
-    setRecomputing(true)
-    setErr(null)
-    try {
-      await insightsApi.recompute(token)
-      setDone(true)
-    } catch (e: any) {
-      setErr(e?.status === 402
-        ? "Tính lại P&L cần gói Pro."
-        : "Tính lại thất bại. Thử lại hoặc vào Overview.")
-    } finally {
-      setRecomputing(false)
-    }
-  }
-
-  if (done) return (
-    <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-800">
-      ✓ Đã tính lại — <a href="/overview" className="underline font-medium">vào Overview để xem margin mới nhất</a>.
-    </div>
-  )
-
-  return (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm space-y-2">
-      <p className="text-blue-800 font-medium">Tính lại P&L với giá vốn mới?</p>
-      <p className="text-blue-700 text-xs">Margin sẽ được cập nhật dựa trên giá vốn vừa nhập.</p>
-      <button onClick={handleRecompute} disabled={recomputing}
-        className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium
-                   hover:bg-blue-700 disabled:opacity-50 transition-colors">
-        {recomputing ? "Đang tính lại..." : "Tính lại P&L →"}
-      </button>
-      {err && <p className="text-xs text-red-600">{err}</p>}
     </div>
   )
 }

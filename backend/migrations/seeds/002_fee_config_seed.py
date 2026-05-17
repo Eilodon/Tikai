@@ -13,6 +13,7 @@ Canonical source of truth:
 
 Run: alembic upgrade head
 """
+
 raise RuntimeError(
     "This seed file is deprecated. Run 'alembic upgrade head' instead.\n"
     "See migrations/versions/0002_* and 0006_* for correct fee config seeding."

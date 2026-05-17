@@ -97,6 +97,16 @@ async def delete_file(path: str) -> None:
     log.info("storage.delete_complete", path=path)
 
 
+async def check_storage_ready() -> None:
+    """Probe Supabase Storage bucket metadata without reading user files."""
+    client = _get_http_client()
+    response = await client.get(
+        f"{settings.supabase_url}/storage/v1/bucket/{BUCKET_NAME}",
+        headers=_headers(use_service_role=True),
+    )
+    response.raise_for_status()
+
+
 async def close_client() -> None:
     """Call on app shutdown to close persistent client."""
     global _http_client

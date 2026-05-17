@@ -378,8 +378,8 @@ export default function SettingsPage() {
         <h2 className="font-semibold mb-4">Thông tin shop</h2>
         <form onSubmit={handleSave} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Tên shop</label>
-            <input type="text" value={shopName} onChange={(e) => setShopName(e.target.value)}
+            <label htmlFor="shop-name" className="block text-sm font-medium mb-1">Tên shop</label>
+            <input id="shop-name" type="text" value={shopName} onChange={(e) => setShopName(e.target.value)}
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="flex items-center gap-3">

@@ -95,14 +95,14 @@ async def upload_import(
 
     # F-C1-02: Read file with size limit check (streaming, not full buffer)
     # Read in 5MB chunks; reject if total exceeds limit before full load
-    file_bytes = b""
+    file_buffer = bytearray()
     chunk_size = 5 * 1024 * 1024  # 5MB chunks
     while True:
         chunk = await file.read(chunk_size)
         if not chunk:
             break
-        file_bytes += chunk
-        if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        file_buffer.extend(chunk)
+        if len(file_buffer) > MAX_FILE_SIZE_BYTES:
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -112,6 +112,7 @@ async def upload_import(
                     }
                 },
             )
+    file_bytes = bytes(file_buffer)
     file_size_bytes = len(file_bytes)
 
     # ADR-SEC-003: _quick_detect_platform calls pd.read_excel (sync) for xlsx.

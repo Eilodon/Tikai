@@ -9,6 +9,7 @@ Feature 6 (Cash Flow Forecast UI) needs cash_in_30d and cash_pending_total
 to show sellers a fuller cash flow timeline beyond just the 14-day window.
 These are nullable — old snapshots will show None (handled gracefully by frontend).
 """
+
 import sqlalchemy as sa
 from alembic import op
 

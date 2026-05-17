@@ -4,6 +4,7 @@ Revision ID: 0003
 Revises: 0002
 Create Date: 2026-05-09
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -38,7 +39,12 @@ def upgrade() -> None:
         sa.Column("attributed_orders", sa.Integer(), default=0),
         sa.Column("attributed_net_revenue", sa.Numeric(18, 2), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            onupdate=sa.func.now(),
+        ),
     )
 
 

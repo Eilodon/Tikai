@@ -18,6 +18,7 @@ After this migration, process_import uses date-aware query:
   WHERE effective_from <= import_period_end
     AND (effective_to IS NULL OR effective_to >= import_period_end)
 """
+
 from alembic import op
 
 revision = "0006"

@@ -2,16 +2,17 @@
 Seed initial TikTok VN fee config.
 Run: python scripts/seed_fee_config.py
 """
+
 import asyncio
 import sys
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from decimal import Decimal
-from datetime import date
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
 from app.models.fee_config import FeeConfig
@@ -21,12 +22,10 @@ settings = get_settings()
 
 async def seed():
     engine = create_async_engine(settings.database_url)
-    AsyncSession = async_sessionmaker(bind=engine, expire_on_commit=False)
+    async_session = async_sessionmaker(bind=engine, expire_on_commit=False)
 
-    async with AsyncSession() as db:
-        existing = await db.scalar(
-            select(FeeConfig).where(FeeConfig.version == "2024-VN-v1")
-        )
+    async with async_session() as db:
+        existing = await db.scalar(select(FeeConfig).where(FeeConfig.version == "2024-VN-v1"))
         if existing:
             print("✓ Fee config 2024-VN-v1 already exists")
             return

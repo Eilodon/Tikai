@@ -6,10 +6,12 @@ LOW-6: /healthz and /readyz endpoints for Docker + k8s health probes.
 v1.0.0: Version string updated from hardcoded "0.4.0" to "1.0.0".
 """
 
+import time
+import uuid
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -132,6 +134,39 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+
+@app.middleware("http")
+async def request_telemetry(request: Request, call_next):
+    """Structured request log with latency and correlation id for ops triage."""
+    start = time.perf_counter()
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        log.exception(
+            "http.request_failed",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            duration_ms=duration_ms,
+        )
+        raise
+
+    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+    response.headers["x-request-id"] = request_id
+    if request.url.path not in {"/healthz", "/readyz", "/health"}:
+        log.info(
+            "http.request",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+    return response
+
+
 register_exception_handlers(app)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -160,7 +195,7 @@ async def healthz():
 
 @app.get("/readyz", tags=["ops"], include_in_schema=False)
 async def readyz():
-    """Readiness probe — checks DB and Redis before accepting traffic."""
+    """Readiness probe — checks DB, Redis, and Storage before accepting traffic."""
     from sqlalchemy import text as sa_text
 
     from app.core.database import AsyncSessionLocal
@@ -180,12 +215,19 @@ async def readyz():
     except Exception as e:
         errors["redis"] = str(e)
 
+    try:
+        from app.core.storage import check_storage_ready
+
+        await check_storage_ready()
+    except Exception as e:
+        errors["storage"] = str(e)
+
     if errors:
         return ORJSONResponse(
             status_code=503,
             content={"status": "not_ready", "errors": errors},
         )
-    return {"status": "ready", "db": "ok", "redis": "ok"}
+    return {"status": "ready", "db": "ok", "redis": "ok", "storage": "ok"}
 
 
 @app.get("/health", tags=["ops"], include_in_schema=False)

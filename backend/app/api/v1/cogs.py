@@ -31,6 +31,15 @@ router = APIRouter()
 # Cap: any shop with more than 500 distinct SKUs is extraordinary;
 # returning more would degrade the settings UI without adding value.
 MAX_COGS_SKUS = 500
+MAX_COGS_UPLOAD_BYTES = 1 * 1024 * 1024  # 1MB CSV is enough for 500 SKU rows.
+
+
+def _safe_csv_cell(value: object) -> str:
+    """Prevent spreadsheet formula injection in downloaded CSV templates."""
+    s = str(value) if value is not None else ""
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+        return "'" + s
+    return s
 
 
 class COGSItem(BaseModel):
@@ -107,7 +116,14 @@ async def download_cogs_template(
     writer = csv.writer(buf)
     writer.writerow(["sku_id", "sku_name", "cogs_per_unit", "note (VND)"])
     for row in sku_rows:
-        writer.writerow([row.sku_id, row.sku_name, cogs_map.get(row.sku_id, "0"), ""])
+        writer.writerow(
+            [
+                _safe_csv_cell(row.sku_id),
+                _safe_csv_cell(row.sku_name),
+                cogs_map.get(row.sku_id, "0"),
+                "",
+            ]
+        )
 
     content = buf.getvalue().encode("utf-8-sig")  # BOM for Excel
     filename = f"cogs_template_{date.today()}.csv"
@@ -221,7 +237,17 @@ async def bulk_import_cogs(
             detail={"error": {"code": "INVALID_FILE", "message": "Chỉ chấp nhận file .csv"}},
         )
 
-    raw = await file.read()
+    raw = await file.read(MAX_COGS_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_COGS_UPLOAD_BYTES:
+        raise HTTPException(
+            413,
+            detail={
+                "error": {
+                    "code": "FILE_TOO_LARGE",
+                    "message": "File COGS quá lớn (tối đa 1MB / 500 SKU).",
+                }
+            },
+        )
     try:
         text = raw.decode("utf-8-sig")  # utf-8-sig strips BOM from Excel exports
     except UnicodeDecodeError:

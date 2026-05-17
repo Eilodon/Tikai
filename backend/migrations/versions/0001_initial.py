@@ -4,6 +4,7 @@ Revision ID: 0001
 Revises:
 Create Date: 2026-05-08
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -28,8 +29,12 @@ def upgrade() -> None:
         sa.Column("fee_config_version", sa.String(50), nullable=False, server_default="2024-VN-v1"),
         sa.Column("cogs_map", postgresql.JSONB(), nullable=True, server_default="{}"),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("tiktok_shop_id"),
     )
@@ -47,8 +52,12 @@ def upgrade() -> None:
         sa.Column("verified_date", sa.Date(), nullable=False),
         sa.Column("source_url", sa.String(500), nullable=False),
         sa.Column("notes", sa.String(1000), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("version"),
     )
@@ -72,8 +81,12 @@ def upgrade() -> None:
         sa.Column("rows_failed", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("error_summary", postgresql.JSONB(), nullable=True),
         sa.Column("ai_rescue_message", postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["shop_id"], ["shops.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -100,8 +113,12 @@ def upgrade() -> None:
         sa.Column("order_date", sa.Date(), nullable=False),
         sa.Column("status", sa.String(20), nullable=False),
         sa.Column("refund_reason_raw", sa.String(1000), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["shop_id"], ["shops.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["import_session_id"], ["import_sessions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -133,13 +150,19 @@ def upgrade() -> None:
         sa.Column("fee_config_version", sa.String(50), nullable=False),
         sa.Column("cogs_coverage_pct", sa.Numeric(6, 4), nullable=False, server_default="0"),
         sa.Column("is_net_revenue_mode", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["shop_id"], ["shops.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["import_session_id"], ["import_sessions.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_insight_snapshots_shop_id_period", "insight_snapshots", ["shop_id", "period_end"])
+    op.create_index(
+        "ix_insight_snapshots_shop_id_period", "insight_snapshots", ["shop_id", "period_end"]
+    )
 
     # ── ai_actions ────────────────────────────────────────────────
     op.create_table(
@@ -160,10 +183,16 @@ def upgrade() -> None:
         sa.Column("actual_impact_json", postgresql.JSONB(), nullable=True),
         sa.Column("is_confirmed_impact", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("confirmed_delta", sa.Numeric(20, 4), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["shop_id"], ["shops.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["insight_snapshot_id"], ["insight_snapshots.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["insight_snapshot_id"], ["insight_snapshots.id"], ondelete="SET NULL"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_ai_actions_shop_id_status", "ai_actions", ["shop_id", "status"])
@@ -183,8 +212,12 @@ def upgrade() -> None:
         sa.Column("next_week_focus", sa.String(500), nullable=False),
         sa.Column("disclaimer", sa.String(500), nullable=False),
         sa.Column("is_read", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.ForeignKeyConstraint(["shop_id"], ["shops.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )

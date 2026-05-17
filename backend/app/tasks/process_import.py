@@ -65,6 +65,22 @@ async def process_import(ctx: dict, session_id: str) -> None:
             log.error("process_import.session_not_found", session_id=session_id)
             return
 
+        # Cycle 4 resilience: ARQ is at-least-once. If the worker is killed after the
+        # final DB commit but before ARQ records success, the retry must not create a
+        # second snapshot/action set for the same import session.
+        if session.status in {"completed", "completed_with_caveats"}:
+            existing_snapshot = await db.scalar(
+                select(InsightSnapshot.id).where(InsightSnapshot.import_session_id == session.id)
+            )
+            if existing_snapshot:
+                log.info(
+                    "process_import.idempotent_terminal_skip",
+                    session_id=session_id,
+                    status=session.status,
+                    snapshot_id=str(existing_snapshot),
+                )
+                return
+
         try:
             session.status = "processing"
             await db.flush()

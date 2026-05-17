@@ -34,6 +34,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "uq_weekly_receipts_shop_period", "weekly_receipts", type_="unique"
-    )
+    op.drop_constraint("uq_weekly_receipts_shop_period", "weekly_receipts", type_="unique")

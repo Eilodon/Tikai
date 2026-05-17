@@ -34,12 +34,21 @@ _MAX_CONCURRENT = 10
 
 async def _shop_was_alerted_today(shop_id: str, redis) -> bool:
     key = f"daily_alert_sent:{shop_id}"
-    return bool(await redis.get(key))
+    try:
+        return bool(await redis.get(key))
+    except Exception as e:
+        # Redis is only the dedup/idempotency store for daily alerts. If it is down,
+        # do not suppress a critical financial alert; send and log the degraded mode.
+        log.warning("daily_alert.redis_get_failed_open", shop_id=shop_id, error=str(e))
+        return False
 
 
 async def _mark_shop_alerted(shop_id: str, redis) -> None:
     key = f"daily_alert_sent:{shop_id}"
-    await redis.set(key, "1", ex=24 * 60 * 60)
+    try:
+        await redis.set(key, "1", ex=24 * 60 * 60)
+    except Exception as e:
+        log.warning("daily_alert.redis_set_failed_open", shop_id=shop_id, error=str(e))
 
 
 def _build_alert_message(snapshot: InsightSnapshot) -> tuple[str, str] | None:

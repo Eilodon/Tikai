@@ -9,6 +9,7 @@ cogs.py GET /v1/cogs uses DISTINCT(shop_id, sku_name) ORDER BY sku_name LIMIT 50
 Without an index on (shop_id, sku_name), PostgreSQL performs a full table scan and
 sort before applying the LIMIT — expensive for shops with 10k+ orders.
 """
+
 from alembic import op
 
 revision = "0007"

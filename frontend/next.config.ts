@@ -1,5 +1,15 @@
 import type { NextConfig } from "next"
 
+function getApiOrigin() {
+  const raw = process.env.NEXT_PUBLIC_API_URL
+  if (!raw) return null
+  try {
+    return new URL(raw).origin
+  } catch {
+    return null
+  }
+}
+
 const nextConfig: NextConfig = {
   typedRoutes: true,
   webpack(config, { webpack }) {
@@ -13,6 +23,13 @@ const nextConfig: NextConfig = {
   },
   // F-3-05: Security headers for a financial SaaS app
   async headers() {
+    const apiOrigin = getApiOrigin()
+    const connectSrc = [
+      "'self'",
+      "https://*.supabase.co",
+      "wss://*.supabase.co",
+      ...(apiOrigin ? [apiOrigin] : []),
+    ]
     return [
       {
         source: "/(.*)",
@@ -29,7 +46,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",   // Tailwind inline styles
               "img-src 'self' data: blob:",
               "font-src 'self'",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+              `connect-src ${connectSrc.join(" ")}`,
               "frame-ancestors 'none'",
             ].join("; "),
           },

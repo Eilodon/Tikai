@@ -51,10 +51,45 @@ local key = KEYS[1]
 local cost = tonumber(ARGV[1])
 local fn_key = ARGV[2]
 local ttl = tonumber(ARGV[3])
+local reserved = tonumber(ARGV[4] or '0')
 redis.call('HINCRBYFLOAT', key, 'total_usd', cost)
 redis.call('HINCRBY', key, fn_key, 1)
+if reserved > 0 then
+  local current_reserved = tonumber(redis.call('HGET', key, 'reserved_usd') or '0')
+  local next_reserved = current_reserved - reserved
+  if next_reserved < 0 then next_reserved = 0 end
+  redis.call('HSET', key, 'reserved_usd', next_reserved)
+end
 redis.call('EXPIRE', key, ttl)
 return redis.call('HGET', key, 'total_usd')
+"""
+
+_RESERVE_BUDGET_LUA = """
+local key = KEYS[1]
+local amount = tonumber(ARGV[1])
+local limit = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
+local spent = tonumber(redis.call('HGET', key, 'total_usd') or '0')
+local reserved = tonumber(redis.call('HGET', key, 'reserved_usd') or '0')
+local projected = spent + reserved + amount
+if projected > limit then
+  return {0, tostring(projected)}
+end
+redis.call('HINCRBYFLOAT', key, 'reserved_usd', amount)
+redis.call('EXPIRE', key, ttl)
+return {1, tostring(projected)}
+"""
+
+_RELEASE_BUDGET_RESERVATION_LUA = """
+local key = KEYS[1]
+local amount = tonumber(ARGV[1])
+local ttl = tonumber(ARGV[2])
+local current_reserved = tonumber(redis.call('HGET', key, 'reserved_usd') or '0')
+local next_reserved = current_reserved - amount
+if next_reserved < 0 then next_reserved = 0 end
+redis.call('HSET', key, 'reserved_usd', next_reserved)
+redis.call('EXPIRE', key, ttl)
+return tostring(next_reserved)
 """
 
 
@@ -92,8 +127,6 @@ async def call_ai(
     Backoff: 0s before attempt 1, 2s before attempt 2.
     (2 attempts total — not adding more since AI budget is the real limiter.)
     """
-    await _check_budget(shop_id, tier)
-
     model = MODEL_SMALL if use_small_model else MODEL_STANDARD
     schema_json = json.dumps(output_schema.model_json_schema(), ensure_ascii=False)
 
@@ -106,69 +139,82 @@ TASK:
 OUTPUT SCHEMA (return ONLY valid JSON matching this schema, no other text):
 {schema_json}"""
 
+    reserved_usd = await _reserve_budget(
+        shop_id,
+        tier,
+        _estimate_max_cost(model=model, user_content=user_content, max_tokens=max_tokens),
+    )
+
     client = get_anthropic_client()
     last_error: Exception | None = None
 
-    for attempt in range(2):
-        # v1.0.0: Backoff before retry (not before first attempt)
-        if attempt > 0:
-            backoff_seconds = 2.0 * attempt  # 2s before attempt 2
-            log.info(
-                "ai.retry_backoff",
-                shop_id=shop_id,
-                function_name=function_name,
-                attempt=attempt + 1,
-                backoff_seconds=backoff_seconds,
-            )
-            await asyncio.sleep(backoff_seconds)
+    try:
+        for attempt in range(2):
+            # v1.0.0: Backoff before retry (not before first attempt)
+            if attempt > 0:
+                backoff_seconds = 2.0 * attempt  # 2s before attempt 2
+                log.info(
+                    "ai.retry_backoff",
+                    shop_id=shop_id,
+                    function_name=function_name,
+                    attempt=attempt + 1,
+                    backoff_seconds=backoff_seconds,
+                )
+                await asyncio.sleep(backoff_seconds)
 
-        try:
-            response = await client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=SYSTEM_BASE,
-                messages=[{"role": "user", "content": user_content}],
-            )
+            try:
+                response = await client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    system=SYSTEM_BASE,
+                    messages=[{"role": "user", "content": user_content}],
+                )
 
-            raw_text = response.content[0].text.strip()
-            if raw_text.startswith("```"):
-                raw_text = re.sub(r"^```(?:json)?\n?", "", raw_text)
-                raw_text = re.sub(r"\n?```$", "", raw_text)
+                raw_text = response.content[0].text.strip()
+                if raw_text.startswith("```"):
+                    raw_text = re.sub(r"^```(?:json)?\n?", "", raw_text)
+                    raw_text = re.sub(r"\n?```$", "", raw_text)
 
-            parsed = json.loads(raw_text)
-            validated = output_schema.model_validate(parsed)
+                parsed = json.loads(raw_text)
+                validated = output_schema.model_validate(parsed)
 
-            input_tokens = response.usage.input_tokens
-            output_tokens = response.usage.output_tokens
-            cost = (
-                Decimal(input_tokens) / Decimal("1000000") * COST_PER_1M_INPUT[model]
-                + Decimal(output_tokens) / Decimal("1000000") * COST_PER_1M_OUTPUT[model]
-            )
+                input_tokens = response.usage.input_tokens
+                output_tokens = response.usage.output_tokens
+                cost = (
+                    Decimal(input_tokens) / Decimal("1000000") * COST_PER_1M_INPUT[model]
+                    + Decimal(output_tokens) / Decimal("1000000") * COST_PER_1M_OUTPUT[model]
+                )
 
-            log.info(
-                "ai.call_complete",
-                shop_id=shop_id,
-                function_name=function_name,
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=str(cost),
-                attempt=attempt + 1,
-            )
+                log.info(
+                    "ai.call_complete",
+                    shop_id=shop_id,
+                    function_name=function_name,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost_usd=str(cost),
+                    attempt=attempt + 1,
+                )
 
-            await _record_cost(shop_id, function_name, cost)
-            return validated.model_dump()
+                await _record_cost(shop_id, function_name, cost, reserved_usd=reserved_usd)
+                return validated.model_dump()
 
-        except Exception as e:
-            last_error = e
-            log.warning(
-                "ai.call_failed",
-                shop_id=shop_id,
-                function_name=function_name,
-                attempt=attempt + 1,
-                error=str(e),
-            )
+            except Exception as e:
+                last_error = e
+                log.warning(
+                    "ai.call_failed",
+                    shop_id=shop_id,
+                    function_name=function_name,
+                    attempt=attempt + 1,
+                    error=str(e),
+                )
+    except Exception:
+        if reserved_usd:
+            await _release_budget_reservation(shop_id, reserved_usd)
+        raise
 
+    if reserved_usd:
+        await _release_budget_reservation(shop_id, reserved_usd)
     raise ValueError(f"AI call failed after 2 attempts for {function_name}: {last_error}")
 
 
@@ -200,17 +246,90 @@ async def _check_budget(shop_id: str, tier: str = "free") -> None:
         log.warning("ai.budget_check_redis_unavailable", shop_id=shop_id, error=str(e))
 
 
-async def _record_cost(shop_id: str, function_name: str, cost_usd: Decimal) -> None:
-    """Atomically record AI cost via Lua script — no check/increment race condition.
-    F-04: replaces separate HGET check + HINCRBYFLOAT increment."""
+def _seconds_until_month_end() -> int:
     import calendar
     from datetime import datetime
 
-    from app.core.redis import get_redis
-
     now = datetime.now(UTC)
     days_in_month = calendar.monthrange(now.year, now.month)[1]
-    ttl = (days_in_month - now.day + 1) * 86400
+    return (days_in_month - now.day + 1) * 86400
+
+
+def _estimate_max_cost(model: str, user_content: str, max_tokens: int) -> Decimal:
+    """Conservative pre-call reservation to close check→increment budget races."""
+    estimated_input_tokens = max(1, len(user_content) // 4)
+    return (
+        Decimal(estimated_input_tokens) / Decimal("1000000") * COST_PER_1M_INPUT[model]
+        + Decimal(max_tokens) / Decimal("1000000") * COST_PER_1M_OUTPUT[model]
+    )
+
+
+async def _reserve_budget(shop_id: str, tier: str, estimated_cost_usd: Decimal) -> Decimal | None:
+    """Atomically reserve estimated AI cost before the model call.
+
+    Without this reservation, concurrent workers can all pass the pre-call HGET check and
+    overspend before _record_cost runs. Redis unavailable remains fail-open to preserve
+    core import functionality, but when Redis is available the budget gate is race-safe.
+    """
+    try:
+        from app.core.redis import get_redis
+
+        key = f"ai_cost_monthly_v2:{shop_id}"
+        ttl = _seconds_until_month_end()
+        r = await get_redis()
+        allowed, projected = await r.eval(
+            _RESERVE_BUDGET_LUA,
+            1,
+            key,
+            str(float(estimated_cost_usd)),
+            str(float(settings.ai_budget_for_tier(tier))),
+            str(ttl),
+        )
+        if int(allowed) != 1:
+            log.warning(
+                "ai.budget_reservation_denied",
+                shop_id=shop_id,
+                tier=tier,
+                projected=str(projected),
+                estimated_cost_usd=str(estimated_cost_usd),
+            )
+            raise ValueError(f"AI budget exceeded for shop {shop_id} (tier={tier})")
+        return estimated_cost_usd
+    except ValueError:
+        raise
+    except Exception as e:
+        log.warning("ai.budget_reservation_redis_unavailable", shop_id=shop_id, error=str(e))
+        return None
+
+
+async def _release_budget_reservation(shop_id: str, reserved_usd: Decimal) -> None:
+    try:
+        from app.core.redis import get_redis
+
+        key = f"ai_cost_monthly_v2:{shop_id}"
+        r = await get_redis()
+        await r.eval(
+            _RELEASE_BUDGET_RESERVATION_LUA,
+            1,
+            key,
+            str(float(reserved_usd)),
+            str(_seconds_until_month_end()),
+        )
+    except Exception as e:
+        log.error("ai.budget_reservation_release_failed", shop_id=shop_id, error=str(e))
+
+
+async def _record_cost(
+    shop_id: str,
+    function_name: str,
+    cost_usd: Decimal,
+    reserved_usd: Decimal | None = None,
+) -> None:
+    """Atomically record AI cost via Lua script — no check/increment race condition.
+    F-04: replaces separate HGET check + HINCRBYFLOAT increment."""
+    from app.core.redis import get_redis
+
+    ttl = _seconds_until_month_end()
 
     key = f"ai_cost_monthly_v2:{shop_id}"
     try:
@@ -222,6 +341,7 @@ async def _record_cost(shop_id: str, function_name: str, cost_usd: Decimal) -> N
             str(float(cost_usd)),
             f"calls:{function_name}",
             str(ttl),
+            str(float(reserved_usd or Decimal("0"))),
         )
         # Post-call check: if we narrowly exceeded budget, log for monitoring
         new_total = Decimal(str(new_total_raw))

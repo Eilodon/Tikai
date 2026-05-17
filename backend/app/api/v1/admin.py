@@ -3,6 +3,7 @@ Admin-only endpoints. Protected by X-Admin-Key header matching ADMIN_SECRET env 
 Not in OpenAPI docs (include_in_schema=False).
 """
 
+import hmac
 from datetime import date
 
 import structlog
@@ -10,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.config import get_settings
+from app.core.rate_limit import limiter
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -20,7 +22,7 @@ _BENCHMARK_TTL = 90 * 24 * 3600  # 90 days in seconds
 
 def _check_admin_key(request: Request) -> None:
     key = request.headers.get("X-Admin-Key", "")
-    if not settings.admin_secret or key != settings.admin_secret:
+    if not settings.admin_secret or not hmac.compare_digest(key, settings.admin_secret):
         raise HTTPException(403, detail={"error": {"code": "FORBIDDEN"}})
 
 
@@ -33,6 +35,7 @@ class BenchmarkUpdateRequest(BaseModel):
 
 
 @router.post("/admin/benchmarks", include_in_schema=False)
+@limiter.limit("10/hour")
 async def update_benchmark(request: Request, body: BenchmarkUpdateRequest) -> dict:
     """Update industry benchmark override in Redis. TTL=90 days."""
     _check_admin_key(request)

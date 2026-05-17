@@ -44,11 +44,12 @@ function PriceCalculator() {
     <div className="bg-white rounded-2xl border p-6 space-y-5">
       <form onSubmit={handleCalculate} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-1">
+          <label htmlFor="public-price-cogs" className="block text-sm font-medium mb-1">
             Giá vốn / đơn vị (VND) <span className="text-red-500">*</span>
           </label>
           <input
-            type="number" required min="1" step="1000"
+            id="public-price-cogs"
+            type="number" required min="0" step="1000"
             value={cogs} onChange={(e) => setCogs(e.target.value)}
             placeholder="VD: 80000"
             className="w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield]"

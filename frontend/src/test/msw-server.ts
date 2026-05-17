@@ -14,7 +14,9 @@ export const mockActionListResponse = {
   items: [
     {
       id: "action-001",
+      shop_id: "shop-001",
       action_type: "reduce_voucher",
+      rule_trigger: "voucher_high",
       title: "Giảm voucher SKU Serum A",
       why: "Voucher 20% đang ăn hết margin",
       do_today: "Vào TikTok Seller Center giảm voucher xuống 8%",
@@ -22,6 +24,9 @@ export const mockActionListResponse = {
       confidence: "high",
       status: "pending",
       completed_at: null,
+      is_confirmed_impact: false,
+      confirmed_delta: null,
+      created_at: "2026-05-08T01:00:00Z",
     },
   ],
   total: 1,
@@ -103,6 +108,24 @@ export const handlers = [
   ),
   http.get(`${API_BASE}/v1/insights/latest`, () =>
     HttpResponse.json(mockInsightResponse)
+  ),
+  http.get(`${API_BASE}/v1/insights/history`, () =>
+    HttpResponse.json([])
+  ),
+  http.get(`${API_BASE}/v1/shops/me`, () =>
+    HttpResponse.json({
+      id: "shop-001",
+      shop_name: "Test Shop",
+      subscription_tier: "pro",
+      fee_config_version: "2026-VN-v3",
+      trial_expires_at: null,
+      is_active: true,
+      notification_email: null,
+      email_digest_enabled: false,
+    })
+  ),
+  http.get(`${API_BASE}/v1/weekly-receipts/latest`, () =>
+    HttpResponse.json({ detail: "No receipt found" }, { status: 404 })
   ),
   http.patch(`${API_BASE}/v1/actions/:id/complete`, ({ params }) =>
     HttpResponse.json({ ...mockActionListResponse.items[0], id: params.id, status: "done" })

@@ -27,15 +27,17 @@ async function request<T>(
   // The browser must set multipart/form-data with the correct boundary= string automatically.
   // Hardcoding application/json causes FastAPI to reject the file upload entirely.
   const isFormData = init.body instanceof FormData
-  const contentTypeHeader = isFormData ? {} : { "Content-Type": "application/json" }
+  const headers = new Headers(init.headers)
+  if (!isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json")
+  }
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`)
+  }
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      ...contentTypeHeader,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
+    headers,
   })
 
   // 401 interceptor: refresh Supabase session and retry once
@@ -84,7 +86,7 @@ export const importsApi = {
     return request<ImportSessionResponse>("/v1/imports", {
       method: "POST",
       body: formData,
-      headers: { Authorization: `Bearer ${token}` },
+      token,
     })
   },
 

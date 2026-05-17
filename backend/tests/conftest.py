@@ -9,6 +9,7 @@ def pytest_configure(config):
     """Set mock env vars so modules that call get_settings() at module import time
     don't crash in CI without a .env file. These values are never used for actual
     DB/API connections — integration tests that need real infra are explicitly skipped."""
+    os.environ["DEBUG"] = "false"
     os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test")
     os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
     os.environ.setdefault("SUPABASE_ANON_KEY", "test_anon_key")

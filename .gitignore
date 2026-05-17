@@ -43,7 +43,6 @@ __pycache__/
 env/
 venv/
 .venv
-.env.example
 *.egg-info/
 .pytest_cache/
 .coverage
@@ -52,3 +51,5 @@ venv/
 .DS_Store
 .vscode/
 frontend/tsconfig.tsbuildinfo
+data/memory/*.db
+data/memory/*.db-*

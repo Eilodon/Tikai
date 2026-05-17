@@ -64,14 +64,16 @@ export function useDismissAction() {
       qc.setQueryData(queryKeys.actions(), (old: AIActionListResponse | undefined) => ({
         ...old,
         items: old?.items?.filter((a) => a.id !== id) ?? [],
+        total: Math.max((old?.total ?? 1) - 1, 0),
+        pending_count: Math.max((old?.pending_count ?? 1) - 1, 0),
       }))
       return { prev }
     },
     onError: (_err, _id, ctx) => {
       if (ctx?.prev) qc.setQueryData(queryKeys.actions(), ctx.prev)
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.actions() })
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.insight() })
     },
   })
 }
@@ -90,7 +92,11 @@ export function useImportStatus(sessionId: string | null) {
       const data = query.state.data as any
       if (!data) return 2000
       // Stop on terminal states
-      if (data.status === "completed" || data.status === "failed") return false
+      if (
+        data.status === "completed" ||
+        data.status === "completed_with_caveats" ||
+        data.status === "failed"
+      ) return false
       // F-3-02: Stop polling if stuck longer than max import duration
       // Prevents infinite "Đang xử lý..." spinner when ARQ job times out
       if (data.created_at) {

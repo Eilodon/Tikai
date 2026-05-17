@@ -112,7 +112,7 @@ describe("COGS Settings UI", () => {
     fireEvent.click(saveBtn)
 
     await waitFor(() => {
-      expect(screen.getByText(/Tính lại P&L/)).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /Tính lại P&L/ })).toBeInTheDocument()
     })
   })
 })

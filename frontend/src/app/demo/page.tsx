@@ -158,7 +158,7 @@ function fmtVnd(n: number) {
 
 function SKURow({ sku }: { sku: (typeof DEMO_INSIGHT.top_skus)[0] }) {
   const [hovered, setHovered] = useState(false)
-  const marginPct = parseFloat(sku.margin_pct)
+  const marginPct = parseFloat(sku.margin_pct ?? "0")
   const isNegative = marginPct < 0
 
   const statusColors: Record<string, string> = {

@@ -1,11 +1,8 @@
 import type { NextConfig } from "next"
-import webpack from "webpack"
 
 const nextConfig: NextConfig = {
-  experimental: {
-    typedRoutes: true,
-  },
-  webpack(config) {
+  typedRoutes: true,
+  webpack(config, { webpack }) {
     const version = process.env.npm_package_version || "2.0.2"
     config.plugins.push(
       new webpack.DefinePlugin({

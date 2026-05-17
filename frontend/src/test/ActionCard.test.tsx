@@ -15,7 +15,9 @@ import type { AIActionResponse } from "@/lib/api"
 
 const mockAction: AIActionResponse = {
   id: "action-001",
+  shop_id: "shop-001",
   action_type: "reduce_voucher",
+  rule_trigger: "voucher_high",
   title: "Giảm voucher SKU Serum A xuống 8%",
   why: "Voucher 20% đang ăn hết margin — net margin hiện tại -2.3%",
   do_today: "Vào TikTok Seller Center → Khuyến mãi → Giảm voucher SKU-001 từ 20% xuống 8%",
@@ -23,6 +25,9 @@ const mockAction: AIActionResponse = {
   confidence: "high",
   status: "pending",
   completed_at: null,
+  is_confirmed_impact: false,
+  confirmed_delta: null,
+  created_at: "2026-05-17T00:00:00Z",
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -140,6 +145,6 @@ describe("ActionCard", () => {
       />
     )
     // ConfidenceBadge renders confidence level — check it's present in DOM
-    expect(screen.getByText(/cao|high/i)).toBeDefined()
+    expect(screen.getByText("Chắc chắn")).toBeDefined()
   })
 })

@@ -323,7 +323,7 @@ alembic downgrade -1           # undo last migration
 alembic revision --autogenerate -m "add_column_x"   # create new
 ```
 
-There are currently **15 migrations** (0001–0015). Migration env uses `pg_advisory_lock` to prevent concurrent execution across multiple replicas — only one process runs migrations at a time; others wait then detect no pending work.
+There are currently **17 migrations** (0001–0017). Migration env uses `pg_advisory_lock` to prevent concurrent execution across multiple replicas — only one process runs migrations at a time; others wait then detect no pending work.
 
 ---
 
@@ -339,7 +339,7 @@ There are currently **15 migrations** (0001–0015). Migration env uses `pg_advi
 ### Pre-deploy Checklist
 
 ```
-□ alembic upgrade head ran against production DB (migrations 0001–0015)
+□ alembic upgrade head ran against production DB (migrations 0001–0017)
 □ ALLOWED_ORIGINS set to production frontend URL
 □ ANTHROPIC_API_KEY configured
 □ SENTRY_DSN configured

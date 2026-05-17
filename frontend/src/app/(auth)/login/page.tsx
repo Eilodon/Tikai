@@ -1,5 +1,6 @@
 "use client"
-import { useState } from "react"
+import { Suspense, useState } from "react"
+import type { Route } from "next"
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 
@@ -11,7 +12,7 @@ function getSafeRedirect(raw: string | null): string {
   return raw
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
@@ -59,7 +60,7 @@ export default function LoginPage() {
           : await supabase.auth.signUp({ email, password })
 
       if (authError) throw authError
-      router.push(getSafeRedirect(searchParams.get("redirect")))
+      router.push(getSafeRedirect(searchParams.get("redirect")) as Route)
     } catch (err: any) {
       setError(err?.message ?? "Đã xảy ra lỗi. Vui lòng thử lại.")
     } finally {
@@ -194,5 +195,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <LoginForm />
+    </Suspense>
   )
 }

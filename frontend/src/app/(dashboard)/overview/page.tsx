@@ -183,7 +183,7 @@ export default function OverviewPage() {
       <ActivationProgress
         hasImported={true}
         hasCogsEntered={parseFloat(insight.cogs_coverage_pct ?? "0") > 0}
-        hasActedOnAction={(actionsData?.items ?? []).some((a) => a.status === "completed")}
+        hasActedOnAction={(actionsData?.items ?? []).some((a) => a.status === "done")}
         hasUsedSimulator={hasUsedSimulator}
         hasReconciledSettlement={hasReconciledSettlement}
       />

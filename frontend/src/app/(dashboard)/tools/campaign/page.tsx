@@ -18,9 +18,10 @@ export default function CampaignCheckPage() {
     </div>
   )
 
+  const snapshotId = insight.id
   const topSkus = insight.top_skus.slice(0, 20)
 
-  function toggle(skuId: string, skuName: string) {
+  function toggle(skuId: string) {
     setSelectedSkus((prev) => {
       if (prev[skuId]) {
         const next = { ...prev }
@@ -48,7 +49,7 @@ export default function CampaignCheckPage() {
       const token = await getAuthToken()
       if (!token) throw new Error("Chưa đăng nhập.")
       const res = await toolsApi.simulateCampaign(token, {
-        snapshot_id: insight.id,
+        snapshot_id: snapshotId,
         skus,
       })
       setResult(res)
@@ -82,7 +83,7 @@ export default function CampaignCheckPage() {
               <div key={sku.sku_id} className={`px-5 py-3 ${sel ? "bg-blue-50" : "hover:bg-gray-50"}`}>
                 <div className="flex items-center gap-3">
                   <input type="checkbox" checked={!!sel}
-                    onChange={() => toggle(sku.sku_id, sku.sku_name)}
+                    onChange={() => toggle(sku.sku_id)}
                     className="w-4 h-4 accent-blue-600" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{sku.sku_name}</p>

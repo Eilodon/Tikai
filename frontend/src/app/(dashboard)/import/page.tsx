@@ -152,7 +152,7 @@ function PostImportCOGSPrompt({
   onSkip,
 }: {
   token: string
-  topSkus: { sku_id: string; sku_name: string }[]
+  topSkus: { sku_id: string; sku_name: string; gmv: string }[]
   onSkip: () => void
 }) {
   const [rows, setRows] = useState(
@@ -240,7 +240,7 @@ function PostImportCOGSPrompt({
 
 function ImportStatus({ session, onCompletedWithTopSkus }: {
   session: ImportSessionResponse
-  onCompletedWithTopSkus?: (skus: {sku_id: string; sku_name: string}[]) => void
+  onCompletedWithTopSkus?: (skus: {sku_id: string; sku_name: string; gmv: string}[]) => void
 }) {
   useEffect(() => {
     // P0-1 fix: pass actual top_skus_for_cogs (was always [])
@@ -251,7 +251,7 @@ function ImportStatus({ session, onCompletedWithTopSkus }: {
     ) {
       onCompletedWithTopSkus(session.top_skus_for_cogs ?? [])
     }
-  }, [session.status])
+  }, [session.status, session.top_skus_for_cogs, onCompletedWithTopSkus])
 
   const statusConfig = {
     pending:                { label: "Đang chờ xử lý...",   color: "text-gray-500"  },

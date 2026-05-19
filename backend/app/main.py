@@ -40,7 +40,7 @@ from app.core.logging import configure_logging
 from app.core.rate_limit import limiter
 from app.core.storage import close_client as close_storage_client
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 
 settings = get_settings()
 configure_logging()
@@ -83,17 +83,18 @@ async def _startup_checks() -> None:
 
     try:
         async with AsyncSessionLocal() as db:
-            count = await db.scalar(
-                sa_text("SELECT COUNT(*) FROM fee_configs WHERE platform = 'shopee'")
-            )
-            if not count:
-                log.critical(
-                    "startup.fee_config_missing",
-                    platform="shopee",
-                    detail="No Shopee fee config found — Shopee imports will use TikTok rates (wrong P&L)",
+            for platform in ("shopee", "lazada"):
+                count = await db.scalar(
+                    sa_text(f"SELECT COUNT(*) FROM fee_configs WHERE platform = '{platform}'")
                 )
-            else:
-                log.info("startup.fee_config_ok", platform="shopee", count=count)
+                if not count:
+                    log.critical(
+                        "startup.fee_config_missing",
+                        platform=platform,
+                        detail=f"No {platform.title()} fee config found — {platform.title()} imports will use TikTok rates (wrong P&L)",
+                    )
+                else:
+                    log.info("startup.fee_config_ok", platform=platform, count=count)
     except Exception as e:
         log.warning("startup.fee_config_check_failed", error=str(e))
 

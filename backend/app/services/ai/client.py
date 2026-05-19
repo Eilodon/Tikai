@@ -22,12 +22,16 @@ settings = get_settings()
 log = structlog.get_logger()
 
 # ── Model selection — FROZEN until ADR authorizes change ──────────────────────
-MODEL_STANDARD = "claude-sonnet-4-5-20251001"
+# Updated to claude-sonnet-4-6 (replaces claude-sonnet-4-5-20251001).
+# Haiku-4-5 remains current; update to haiku-4-6 once available.
+MODEL_STANDARD = "claude-sonnet-4-6"
 MODEL_SMALL = "claude-haiku-4-5-20251001"
 
-# Approximate cost per 1M tokens (USD)
-COST_PER_1M_INPUT = {MODEL_STANDARD: Decimal("3.00"), MODEL_SMALL: Decimal("0.25")}
-COST_PER_1M_OUTPUT = {MODEL_STANDARD: Decimal("15.00"), MODEL_SMALL: Decimal("1.25")}
+# Approximate cost per 1M tokens (USD) — verify at https://www.anthropic.com/pricing
+# claude-sonnet-4-6: $3.00 input / $15.00 output (same tier as sonnet-4-5)
+# claude-haiku-4-5:  $0.80 input /  $4.00 output
+COST_PER_1M_INPUT = {MODEL_STANDARD: Decimal("3.00"), MODEL_SMALL: Decimal("0.80")}
+COST_PER_1M_OUTPUT = {MODEL_STANDARD: Decimal("15.00"), MODEL_SMALL: Decimal("4.00")}
 
 SYSTEM_BASE = """Bạn là Tikai, trợ lý vận hành TikTok Shop cho seller Việt Nam.
 
@@ -116,16 +120,14 @@ async def call_ai(
     max_tokens: int = 1000,
     tier: str = "free",
 ) -> dict:
-    """
-    Single AI call with structured output via Pydantic schema.
+    """Single AI call with structured output via Pydantic schema.
+
     Returns parsed dict matching output_schema.
     Raises ValueError if schema validation fails after 2 retries.
+    `tier` is forwarded to _record_cost() for tier-aware post-call budget logging.
 
-    v1.0.0: Added exponential backoff between retries.
-    Anthropic 429 (rate limit) and 529 (overload) need back-off to recover —
-    immediate retry just adds load without giving the API time to recover.
+    v1.0.0: exponential backoff between retries — Anthropic 429/529 need recovery time.
     Backoff: 0s before attempt 1, 2s before attempt 2.
-    (2 attempts total — not adding more since AI budget is the real limiter.)
     """
     model = MODEL_SMALL if use_small_model else MODEL_STANDARD
     schema_json = json.dumps(output_schema.model_json_schema(), ensure_ascii=False)
@@ -196,7 +198,9 @@ OUTPUT SCHEMA (return ONLY valid JSON matching this schema, no other text):
                     attempt=attempt + 1,
                 )
 
-                await _record_cost(shop_id, function_name, cost, reserved_usd=reserved_usd)
+                await _record_cost(
+                    shop_id, function_name, cost, reserved_usd=reserved_usd, tier=tier
+                )
                 return validated.model_dump()
 
             except Exception as e:
@@ -324,9 +328,11 @@ async def _record_cost(
     function_name: str,
     cost_usd: Decimal,
     reserved_usd: Decimal | None = None,
+    tier: str = "free",
 ) -> None:
     """Atomically record AI cost via Lua script — no check/increment race condition.
-    F-04: replaces separate HGET check + HINCRBYFLOAT increment."""
+    F-04: replaces separate HGET check + HINCRBYFLOAT increment.
+    BUG-FIX: post-call comparison uses tier-aware budget, not legacy flat $0.50 limit."""
     from app.core.redis import get_redis
 
     ttl = _seconds_until_month_end()
@@ -343,14 +349,18 @@ async def _record_cost(
             str(ttl),
             str(float(reserved_usd or Decimal("0"))),
         )
-        # Post-call check: if we narrowly exceeded budget, log for monitoring
+        # Post-call check: if we narrowly exceeded budget, log for monitoring.
+        # Use tier-aware budget so Business/Enterprise users ($1.00) don't get
+        # false-positive warnings after spending just $0.50 (legacy flat limit).
         new_total = Decimal(str(new_total_raw))
-        if new_total > settings.ai_budget_limit:
+        tier_budget = settings.ai_budget_for_tier(tier)
+        if new_total > tier_budget:
             log.warning(
                 "ai.budget_exceeded_post_call",
                 shop_id=shop_id,
+                tier=tier,
                 new_total=str(new_total),
-                limit=str(settings.ai_budget_limit),
+                limit=str(tier_budget),
             )
     except Exception as e:
         # Fail-open: cost recording failure must never crash the import pipeline.

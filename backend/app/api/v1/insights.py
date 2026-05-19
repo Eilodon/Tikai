@@ -1029,7 +1029,9 @@ async def get_cm3(
 
 
 @router.get("/insights/aggregate")
-@limiter.limit("10/minute")  # BUG-M2 FIX: MCN query fans out to all shops — rate-limit to prevent DoS
+@limiter.limit(
+    "10/minute"
+)  # BUG-M2 FIX: MCN query fans out to all shops — rate-limit to prevent DoS
 async def get_aggregate_overview(
     request: Request,
     shop: Annotated[Shop, Depends(get_current_shop)],
@@ -1069,7 +1071,7 @@ async def get_aggregate_overview(
     )
     snapshots = {s.shop_id: s for s in snap_rows}
 
-    shop_name_map = {s.id: s.shop_name for s in shop_list}
+    {s.id: s.shop_name for s in shop_list}
 
     total_gmv = Decimal("0")
     total_net_revenue = Decimal("0")
@@ -1119,7 +1121,10 @@ async def get_aggregate_overview(
         str(Decimal(total_refunds) / Decimal(total_orders)) if total_orders > 0 else None
     )
 
-    per_shop.sort(key=lambda x: Decimal(x.get("gmv", "0")) if x.get("has_data") else Decimal("0"), reverse=True)
+    per_shop.sort(
+        key=lambda x: Decimal(x.get("gmv", "0")) if x.get("has_data") else Decimal("0"),
+        reverse=True,
+    )
 
     return {
         "owner_id": str(shop.owner_id),

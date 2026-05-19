@@ -256,7 +256,7 @@ class TestVersionString:
     def test_app_version_is_current(self):
         from app.main import APP_VERSION
 
-        assert APP_VERSION == "2.2.0", (
-            f"APP_VERSION must be '2.2.0' (current release). Got {APP_VERSION!r}. "
+        assert APP_VERSION == "2.3.0", (
+            f"APP_VERSION must be '2.3.0' (current release). Got {APP_VERSION!r}. "
             "Bump APP_VERSION in main.py on every release."
         )

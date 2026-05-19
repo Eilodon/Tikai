@@ -438,10 +438,10 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # BUG-M1 FIX: "enterprise" was missing → enterprise shops fell back to
             # ai_max_calls_per_import_free (3-5) instead of 20 (gates.py Feature.AI_CALLS_PER_IMPORT).
             _tier_limits = {
-                "free":       settings.ai_max_calls_per_import_free,
-                "pro":        settings.ai_max_calls_per_import_pro,
-                "pro_trial":  settings.ai_max_calls_per_import_pro,
-                "business":   settings.ai_max_calls_per_import_business,
+                "free": settings.ai_max_calls_per_import_free,
+                "pro": settings.ai_max_calls_per_import_pro,
+                "pro_trial": settings.ai_max_calls_per_import_pro,
+                "business": settings.ai_max_calls_per_import_business,
                 "enterprise": settings.ai_max_calls_per_import_enterprise,
             }
             ai_limit = _tier_limits.get(_tier, settings.ai_max_calls_per_import_free)

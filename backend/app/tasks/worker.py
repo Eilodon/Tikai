@@ -174,10 +174,10 @@ async def process_weekly_receipt_for_shop(ctx: dict, shop_id: str, week_label: s
         # BUG-H1 FIX: prices from UPGRADE_MESSAGES in gates.py
         # Old values: pro=99k (wrong), business=299k (wrong). Added pro_trial + enterprise.
         _subscription_cost_map = {
-            "free":       Decimal("0"),
-            "pro_trial":  Decimal("0"),        # free trial period
-            "pro":        Decimal("299000"),   # 299k/tháng per UPGRADE_MESSAGES
-            "business":   Decimal("799000"),   # 799k/tháng per UPGRADE_MESSAGES
+            "free": Decimal("0"),
+            "pro_trial": Decimal("0"),  # free trial period
+            "pro": Decimal("299000"),  # 299k/tháng per UPGRADE_MESSAGES
+            "business": Decimal("799000"),  # 799k/tháng per UPGRADE_MESSAGES
             "enterprise": Decimal("2000000"),  # ~2M/tháng (estimate — verify with sales)
         }
         _tier = getattr(shop, "subscription_tier", "free") or "free"
@@ -212,7 +212,6 @@ async def process_weekly_receipt_for_shop(ctx: dict, shop_id: str, week_label: s
         # ── Email digest ─────────────────────────────────────────────────
         # Fire-and-forget: NEVER let email failure block receipt creation.
         # L8-H02: email digest is a Pro+ feature — skip for Free tier regardless of flag.
-        from app.core.gates import Feature, get_gate_value
 
         # BUG-L1 FIX: avoid coupling email digest access to Feature.ZALO_PUSH gate.
         # Check subscription tier directly — email digest is a Pro+ feature.

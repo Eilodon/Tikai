@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tikai-backend"
-version = "0.4.1"
+version = "2.3.0"
 description = "Tikai backend — TikTok Shop analytics for Vietnamese sellers"
 requires-python = ">=3.12"
 dependencies = [
@@ -67,6 +67,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "ai_eval: marks tests that call live AI API (deselect with -m 'not ai_eval')",
+    "integration: marks tests that require real PostgreSQL + Redis (skipped in unit CI job)",
 ]
 
 [tool.ruff]

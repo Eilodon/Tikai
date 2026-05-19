@@ -41,9 +41,7 @@ async def create_shop(
 
     if shop_count > 0:
         # Get any existing shop to check the tier limit (.limit(1) — all user shops share same tier)
-        any_shop = await db.scalar(
-            select(Shop).where(Shop.owner_id == current_user.id).limit(1)
-        )
+        any_shop = await db.scalar(select(Shop).where(Shop.owner_id == current_user.id).limit(1))
         if any_shop:
             max_shops: int = int(get_gate_value(any_shop, Feature.MULTI_SHOP) or 1)
             if shop_count >= max_shops:

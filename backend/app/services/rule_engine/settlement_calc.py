@@ -20,7 +20,7 @@ class SettlementForecast:
 
 
 # TikTok VN settlement tier thresholds (ADR-005)
-_TIER1_DAYS = 7   # LDR < 2% AND SFCR < 1%
+_TIER1_DAYS = 7  # LDR < 2% AND SFCR < 1%
 _TIER2_DAYS = 14  # LDR 2–5% (default)
 _TIER3_DAYS = 31  # LDR > 5% OR SFCR > 2%
 

@@ -285,8 +285,8 @@ async def _reserve_budget(shop_id: str, tier: str, estimated_cost_usd: Decimal) 
             _RESERVE_BUDGET_LUA,
             1,
             key,
-            str(float(estimated_cost_usd)),
-            str(float(settings.ai_budget_for_tier(tier))),
+            str(estimated_cost_usd),
+            str(settings.ai_budget_for_tier(tier)),
             str(ttl),
         )
         if int(allowed) != 1:
@@ -316,7 +316,7 @@ async def _release_budget_reservation(shop_id: str, reserved_usd: Decimal) -> No
             _RELEASE_BUDGET_RESERVATION_LUA,
             1,
             key,
-            str(float(reserved_usd)),
+            str(reserved_usd),
             str(_seconds_until_month_end()),
         )
     except Exception as e:
@@ -344,10 +344,10 @@ async def _record_cost(
             _RECORD_COST_LUA,
             1,
             key,
-            str(float(cost_usd)),
+            str(cost_usd),
             f"calls:{function_name}",
             str(ttl),
-            str(float(reserved_usd or Decimal("0"))),
+            str(reserved_usd or Decimal("0")),
         )
         # Post-call check: if we narrowly exceeded budget, log for monitoring.
         # Use tier-aware budget so Business/Enterprise users ($1.00) don't get

@@ -8,13 +8,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_shop
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.models.shop import Shop
 from app.models.weekly_receipt import WeeklyReceipt
 
@@ -83,7 +84,9 @@ async def list_receipts(
 
 
 @router.patch("/weekly-receipts/{receipt_id}/read")
+@limiter.limit("60/hour")
 async def mark_receipt_read(
+    request: Request,
     receipt_id: uuid.UUID,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],

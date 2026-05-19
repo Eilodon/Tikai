@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_shop
 from app.core.database import get_db
 from app.core.gates import Feature, require_feature
+from app.core.rate_limit import limiter
 from app.models.order import Order
 from app.models.shop import Shop
 
@@ -48,7 +49,9 @@ class SKUStockStatus(BaseModel):
 
 
 @router.post("/inventory/set-stock")
+@limiter.limit("60/hour")
 async def set_stock(
+    request: Request,
     body: StockSetRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -71,7 +74,9 @@ async def set_stock(
 
 
 @router.delete("/inventory/set-stock/{sku_id}")
+@limiter.limit("60/hour")
 async def remove_stock(
+    request: Request,
     sku_id: str,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],

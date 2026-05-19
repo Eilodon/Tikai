@@ -312,7 +312,7 @@ async def recompute_insight(
     lock_key = int(hashlib.md5(str(shop.id).encode(), usedforsecurity=False).hexdigest(), 16) % (
         2**31
     )
-    locked = await db.scalar(sa_text(f"SELECT pg_try_advisory_xact_lock({lock_key})"))
+    locked = await db.scalar(sa_text("SELECT pg_try_advisory_xact_lock(:k)").bindparams(k=lock_key))
     if not locked:
         raise HTTPException(
             status_code=409,

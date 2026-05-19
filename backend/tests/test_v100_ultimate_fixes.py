@@ -260,3 +260,115 @@ class TestVersionString:
             f"APP_VERSION must be '2.3.0' (current release). Got {APP_VERSION!r}. "
             "Bump APP_VERSION in main.py on every release."
         )
+
+
+class TestRedisDecimalPrecision:
+    """VHEATM audit: Decimal → float conversion in Redis Lua calls loses precision."""
+
+    def test_reserve_budget_passes_decimal_string_not_float(self):
+        import inspect
+
+        from app.services.ai import client as ai_client
+
+        source = inspect.getsource(ai_client._reserve_budget)
+        # Prohibited patterns: str(float(... in Lua eval args
+        assert "str(float(estimated_cost_usd))" not in source, (
+            "_reserve_budget still converts estimated_cost_usd to float before Redis. "
+            "Use str(estimated_cost_usd) directly to preserve Decimal precision."
+        )
+        assert "str(float(settings.ai_budget_for_tier" not in source, (
+            "_reserve_budget still converts budget limit to float before Redis."
+        )
+
+    def test_record_cost_passes_decimal_string_not_float(self):
+        import inspect
+
+        from app.services.ai import client as ai_client
+
+        source = inspect.getsource(ai_client._record_cost)
+        assert "str(float(cost_usd))" not in source, (
+            "_record_cost still converts cost_usd to float before Redis. "
+            "Decimal precision loss accumulates across 1000s of AI calls."
+        )
+        assert "str(float(reserved_usd" not in source, (
+            "_record_cost still converts reserved_usd to float before Redis."
+        )
+
+    def test_release_budget_passes_decimal_string_not_float(self):
+        import inspect
+
+        from app.services.ai import client as ai_client
+
+        source = inspect.getsource(ai_client._release_budget_reservation)
+        assert "str(float(reserved_usd))" not in source, (
+            "_release_budget_reservation still converts reserved_usd to float before Redis."
+        )
+
+
+class TestRateLimitCoverage:
+    """VHEATM audit: rate limit coverage on all mutation endpoints."""
+
+    def test_shops_router_imports_limiter(self):
+        import inspect
+
+        from app.api.v1 import shops
+
+        source = inspect.getsource(shops)
+        assert "from app.core.rate_limit import limiter" in source, (
+            "shops.py does not import rate limiter — mutation endpoints unprotected."
+        )
+
+    def test_shops_onboarding_has_rate_limit(self):
+        import inspect
+
+        from app.api.v1 import shops
+
+        pre_idx = inspect.getsource(shops).find("async def create_shop")
+        pre = inspect.getsource(shops)[max(0, pre_idx - 200) : pre_idx]
+        assert "@limiter.limit(" in pre, "POST /shops/onboarding missing rate limit."
+
+    def test_inventory_router_imports_limiter(self):
+        import inspect
+
+        from app.api.v1 import inventory
+
+        source = inspect.getsource(inventory)
+        assert "from app.core.rate_limit import limiter" in source, (
+            "inventory.py does not import rate limiter — set-stock mutations unprotected."
+        )
+
+    def test_livestream_router_imports_limiter(self):
+        import inspect
+
+        from app.api.v1 import livestream
+
+        source = inspect.getsource(livestream)
+        assert "from app.core.rate_limit import limiter" in source, (
+            "livestream.py does not import rate limiter — session create/delete unprotected."
+        )
+
+    def test_weekly_receipts_patch_has_rate_limit(self):
+        import inspect
+
+        from app.api.v1 import weekly_receipts
+
+        source = inspect.getsource(weekly_receipts)
+        mark_idx = source.find("async def mark_receipt_read")
+        pre = source[max(0, mark_idx - 200) : mark_idx]
+        assert "@limiter.limit(" in pre, "PATCH /weekly-receipts/{id}/read missing rate limit."
+
+
+class TestAdvisoryLockParameterized:
+    """VHEATM audit: advisory lock in insights.py must use parameterized query."""
+
+    def test_advisory_lock_not_fstring(self):
+        import inspect
+
+        from app.api.v1 import insights
+
+        source = inspect.getsource(insights)
+        assert 'sa_text(f"SELECT pg_try_advisory_xact_lock(' not in source, (
+            "Advisory lock still uses f-string interpolation in sa_text(). "
+            "Use .bindparams() for parameterized query: "
+            'sa_text("SELECT pg_try_advisory_xact_lock(:k)").bindparams(k=lock_key)'
+        )

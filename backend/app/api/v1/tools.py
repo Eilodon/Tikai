@@ -172,7 +172,9 @@ async def get_current_fee_config(
     if not config:
         raise HTTPException(
             404,
-            detail={"error": {"code": "FEE_CONFIG_NOT_FOUND", "message": "Không tìm thấy cấu hình phí."}},
+            detail={
+                "error": {"code": "FEE_CONFIG_NOT_FOUND", "message": "Không tìm thấy cấu hình phí."}
+            },
         )
 
     today = date.today()

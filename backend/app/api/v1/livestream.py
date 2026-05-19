@@ -8,13 +8,14 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_shop
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.models.livestream import LiveStreamSession
 from app.models.order import Order
 from app.models.shop import Shop
@@ -101,7 +102,9 @@ async def list_livestreams(
 
 
 @router.post("/livestream", status_code=201)
+@limiter.limit("20/hour")
 async def create_livestream(
+    request: Request,
     body: LiveStreamCreateRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -115,7 +118,9 @@ async def create_livestream(
 
 
 @router.patch("/livestream/{livestream_id}/results")
+@limiter.limit("30/hour")
 async def update_livestream_results(
+    request: Request,
     livestream_id: uuid.UUID,
     body: LiveStreamUpdateResultRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
@@ -139,7 +144,9 @@ async def update_livestream_results(
 
 
 @router.delete("/livestream/{livestream_id}", status_code=204)
+@limiter.limit("20/hour")
 async def delete_livestream(
+    request: Request,
     livestream_id: uuid.UUID,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -157,7 +164,9 @@ async def delete_livestream(
 
 
 @router.get("/livestream/{session_id}/auto-attribute")
+@limiter.limit("30/hour")
 async def auto_attribute_livestream(
+    request: Request,
     session_id: uuid.UUID,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],

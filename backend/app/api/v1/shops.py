@@ -1,7 +1,7 @@
 from datetime import UTC
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,7 @@ from app.core.auth import AuthenticatedUser, get_current_shop, get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.gates import Feature, get_gate_value
+from app.core.rate_limit import limiter
 from app.models.shop import Shop
 from app.schemas.shop import CreateShopRequest, ShopResponse, UpdateShopRequest
 
@@ -18,7 +19,9 @@ settings = get_settings()
 
 
 @router.post("/shops/onboarding", status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/hour")
 async def create_shop(
+    request: Request,
     body: CreateShopRequest,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -41,9 +44,7 @@ async def create_shop(
 
     if shop_count > 0:
         # Get any existing shop to check the tier limit (.limit(1) — all user shops share same tier)
-        any_shop = await db.scalar(
-            select(Shop).where(Shop.owner_id == current_user.id).limit(1)
-        )
+        any_shop = await db.scalar(select(Shop).where(Shop.owner_id == current_user.id).limit(1))
         if any_shop:
             max_shops: int = int(get_gate_value(any_shop, Feature.MULTI_SHOP) or 1)
             if shop_count >= max_shops:
@@ -102,7 +103,9 @@ async def get_shop_me(
 
 
 @router.patch("/shops/me")
+@limiter.limit("30/hour")
 async def update_shop_me(
+    request: Request,
     body: UpdateShopRequest,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -143,7 +146,9 @@ class NotificationSettingsRequest(BaseModel):
 
 
 @router.patch("/shops/me/notifications")
+@limiter.limit("10/hour")
 async def update_notification_settings(
+    request: Request,
     body: NotificationSettingsRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -195,7 +200,9 @@ async def get_vapid_public_key() -> dict:
 
 
 @router.post("/shops/me/push-subscription", status_code=204)
+@limiter.limit("20/hour")
 async def save_push_subscription(
+    request: Request,
     body: PushSubscriptionRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],

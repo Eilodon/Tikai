@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # App
     environment: str = "development"
     debug: bool = False
-    rule_engine_version: str = "0.1.0"
+    rule_engine_version: str = "2.3.0"
 
     # Database
     database_url: str  # postgresql+asyncpg://...
@@ -55,6 +55,12 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = "redis://localhost:6379"
+
+    # Database connection pool — tune per Railway plan and replica count.
+    # Default: pool_size=5, max_overflow=10 → max 15 connections per API process.
+    # With 2 API replicas + 1 worker: 2×15 + 10 = 40 total (safe for Supabase Pro=100).
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
 
     # CORS
     allowed_origins: list[str] = ["http://localhost:3000"]
@@ -171,6 +177,21 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("app_base_url", mode="after")
+    @classmethod
+    def warn_staging_app_base_url(cls, v: str, info: "FieldValidationInfo") -> str:
+        """Fail fast if staging still uses the production app_base_url default.
+        Without this, email digest links from staging point to production,
+        causing confusion for sellers who receive staging test emails."""
+        env = info.data.get("environment", "development")
+        if env == "staging" and "app.tikai.vn" in v:
+            raise ValueError(
+                "APP_BASE_URL still points to production (app.tikai.vn) in staging environment. "
+                "Set APP_BASE_URL=https://staging.tikai.vn (or your staging URL) to prevent "
+                "staging emails from linking to production."
+            )
+        return v
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
@@ -186,10 +207,10 @@ class Settings(BaseSettings):
     def ai_budget_for_tier(self, tier: str) -> Decimal:
         """Return the monthly AI dollar budget for a given subscription tier."""
         mapping = {
-            "free":       self.ai_max_cost_per_month_usd_free,
-            "pro":        self.ai_max_cost_per_month_usd_pro,
-            "pro_trial":  self.ai_max_cost_per_month_usd_pro,   # trial gets pro budget
-            "business":   self.ai_max_cost_per_month_usd_business,
+            "free": self.ai_max_cost_per_month_usd_free,
+            "pro": self.ai_max_cost_per_month_usd_pro,
+            "pro_trial": self.ai_max_cost_per_month_usd_pro,  # trial gets pro budget
+            "business": self.ai_max_cost_per_month_usd_business,
             "enterprise": self.ai_max_cost_per_month_usd_enterprise,
         }
         return Decimal(mapping.get(tier, self.ai_max_cost_per_month_usd_free))

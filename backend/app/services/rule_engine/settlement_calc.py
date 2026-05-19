@@ -20,7 +20,7 @@ class SettlementForecast:
 
 
 # TikTok VN settlement tier thresholds (ADR-005)
-_TIER1_DAYS = 7   # LDR < 2% AND SFCR < 1%
+_TIER1_DAYS = 7  # LDR < 2% AND SFCR < 1%
 _TIER2_DAYS = 14  # LDR 2–5% (default)
 _TIER3_DAYS = 31  # LDR > 5% OR SFCR > 2%
 
@@ -47,7 +47,9 @@ def calculate_settlement_forecast(
 ) -> SettlementForecast:
     """
     Estimate cash-in-14d based on completed orders not yet settled.
-    Conservative estimate: uses net_revenue of completed orders within window.
+    Optimistic estimate: excludes loss orders (nr <= 0) and refunded/cancelled orders.
+    Loss orders (fees > GMV) are real but TikTok does not settle them as cash-out;
+    they are deducted from the next settlement batch instead — not modeled here.
     Settlement window is dynamic: Tier1=7d, Tier2=14d, Tier3=31d based on shop health.
     """
     from app.services.rule_engine.fee_calculator import calculate_net_revenue

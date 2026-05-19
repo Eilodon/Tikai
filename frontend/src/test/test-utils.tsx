@@ -36,6 +36,14 @@ export function renderWithProviders(
   return render(ui, { wrapper: Wrapper, ...options })
 }
 
+/** Returns a wrapper component for renderHook — each call creates a fresh QueryClient */
+export function makeTestWrapper() {
+  return function TestWrapper({ children }: WrapperProps) {
+    const qc = makeQueryClient()
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  }
+}
+
 /** Flush all pending promises and microtasks in tests */
 export const flushPromises = () =>
   new Promise((resolve) => setTimeout(resolve, 0))

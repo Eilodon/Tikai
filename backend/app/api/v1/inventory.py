@@ -5,11 +5,10 @@ v2.3.0: Pro+ feature. Stores stock_on_hand in shop.stock_map JSONB.
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_shop
 from app.core.database import get_db
 from app.core.gates import Feature, require_feature
+from app.core.rate_limit import limiter
 from app.models.order import Order
 from app.models.shop import Shop
 
@@ -49,7 +49,9 @@ class SKUStockStatus(BaseModel):
 
 
 @router.post("/inventory/set-stock")
+@limiter.limit("60/hour")
 async def set_stock(
+    request: Request,
     body: StockSetRequest,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -62,17 +64,19 @@ async def set_stock(
 
     from sqlalchemy import update
 
-    await db.execute(
-        update(Shop).where(Shop.id == shop.id).values(stock_map=current_map)
-    )
+    await db.execute(update(Shop).where(Shop.id == shop.id).values(stock_map=current_map))
     await db.commit()
 
-    log.info("inventory.stock_set", shop_id=str(shop.id), sku_id=body.sku_id, stock=body.stock_on_hand)
+    log.info(
+        "inventory.stock_set", shop_id=str(shop.id), sku_id=body.sku_id, stock=body.stock_on_hand
+    )
     return StockSetResponse(sku_id=body.sku_id, stock_on_hand=body.stock_on_hand)
 
 
 @router.delete("/inventory/set-stock/{sku_id}")
+@limiter.limit("60/hour")
 async def remove_stock(
+    request: Request,
     sku_id: str,
     shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -84,7 +88,12 @@ async def remove_stock(
     if sku_id not in current_map:
         raise HTTPException(
             404,
-            detail={"error": {"code": "NOT_FOUND", "message": f"Không có dữ liệu tồn kho cho SKU '{sku_id}'."}},
+            detail={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": f"Không có dữ liệu tồn kho cho SKU '{sku_id}'.",
+                }
+            },
         )
 
     del current_map[sku_id]
@@ -126,8 +135,7 @@ async def get_inventory_status(
         .group_by(Order.sku_id, Order.sku_name)
     )
     sales_by_sku: dict[str, dict] = {
-        r.sku_id: {"sku_name": r.sku_name, "total_qty": int(r.total_qty or 0)}
-        for r in rows
+        r.sku_id: {"sku_name": r.sku_name, "total_qty": int(r.total_qty or 0)} for r in rows
     }
 
     stock_map: dict = shop.stock_map or {}

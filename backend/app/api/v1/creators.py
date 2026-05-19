@@ -198,14 +198,16 @@ async def update_creator(
             for open_snap in open_snaps_result.all():
                 open_snap.valid_to = today
             # Create new snapshot for the new rate
-            db.add(CommissionSnapshot(
-                shop_id=shop.id,
-                creator_id=profile.creator_id,
-                sku_id=None,
-                rate=new_rate,
-                valid_from=today,
-                valid_to=None,
-            ))
+            db.add(
+                CommissionSnapshot(
+                    shop_id=shop.id,
+                    creator_id=profile.creator_id,
+                    sku_id=None,
+                    rate=new_rate,
+                    valid_from=today,
+                    valid_to=None,
+                )
+            )
 
     for field_name, val in update_data.items():
         setattr(profile, field_name, val)

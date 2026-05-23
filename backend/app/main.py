@@ -47,22 +47,7 @@ configure_logging()
 log = structlog.get_logger()
 
 
-def _init_sentry() -> None:
-    """FIX ISSUE-08: Initialize Sentry if DSN is configured."""
-    if not settings.sentry_dsn:
-        return
-    import sentry_sdk
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
-    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.environment,
-        integrations=[FastApiIntegration(), SqlalchemyIntegration()],
-        traces_sample_rate=0.1 if settings.is_production else 0.0,
-        send_default_pii=False,
-    )
-    log.info("sentry.initialized")
+from app.core.sentry import init_sentry as _init_sentry  # noqa: E402
 
 
 async def _startup_checks() -> None:

@@ -123,6 +123,7 @@ const DEMO_INSIGHT: InsightSnapshotResponse = {
   days_in_period: 14,
   is_partial_period: false,
   is_first_import: false,
+  fee_discrepancy_notes: [],
   created_at: "2026-05-14T08:00:00Z",
 }
 

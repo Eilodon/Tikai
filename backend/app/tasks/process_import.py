@@ -94,8 +94,8 @@ async def process_import(ctx: dict, session_id: str) -> None:
             # 1. Download from Supabase Storage
             file_bytes = await storage_download(session.file_path)
 
-            # 2. Parse
-            parse_result = parse_order_csv(file_bytes, session.original_filename)
+            # 2. Parse (offload sync pandas parse to thread pool to avoid blocking event loop)
+            parse_result = await asyncio.to_thread(parse_order_csv, file_bytes, session.original_filename)
             session.file_type = parse_result.file_type
             session.encoding_detected = parse_result.encoding_detected
             session.date_range_start = parse_result.date_range_start
@@ -398,10 +398,12 @@ async def process_import(ctx: dict, session_id: str) -> None:
             try:
                 from app.services.creators.sync import sync_creators_from_snapshot
 
-                synced = await sync_creators_from_snapshot(
-                    db, session.shop_id, snapshot.top_creators_json or []
-                )
-                await db.flush()
+                # FIX: Use SAVEPOINT (begin_nested) to prevent DB exception from tainting the outer transaction
+                async with db.begin_nested():
+                    synced = await sync_creators_from_snapshot(
+                        db, session.shop_id, snapshot.top_creators_json or []
+                    )
+                    await db.flush()
                 log.info(
                     "process_import.creators_synced", shop_id=str(session.shop_id), synced=synced
                 )
@@ -413,18 +415,18 @@ async def process_import(ctx: dict, session_id: str) -> None:
                 f"tuần từ {insight_data.period_start.strftime('%d/%m')} "
                 f"đến {insight_data.period_end.strftime('%d/%m')}"
             )
-            aha_input = AhaNarrativeInput(
-                shop_name=shop.shop_name,
-                period_label=period_label,
-                gmv_total=insight_data.gmv_total,
-                net_revenue=insight_data.net_revenue,
-                cash_in_14d=cash_in_14d,
-                top_leaks=[LeakItem(**lk) for lk in snapshot.top_leaks_json],
-                is_net_revenue_mode=insight_data.is_net_revenue_mode,
-                cogs_coverage_pct=insight_data.cogs_coverage_pct,
-            )
             # Aha Narrator is non-critical — a failure must not abort the import.
             try:
+                aha_input = AhaNarrativeInput(
+                    shop_name=shop.shop_name,
+                    period_label=period_label,
+                    gmv_total=insight_data.gmv_total,
+                    net_revenue=insight_data.net_revenue,
+                    cash_in_14d=cash_in_14d,
+                    top_leaks=[LeakItem.model_validate(lk) for lk in snapshot.top_leaks_json],
+                    is_net_revenue_mode=insight_data.is_net_revenue_mode,
+                    cogs_coverage_pct=insight_data.cogs_coverage_pct,
+                )
                 await run_aha_narrator(
                     aha_input, str(session.shop_id), str(snapshot.id), tier=_tier
                 )
@@ -517,23 +519,25 @@ async def process_import(ctx: dict, session_id: str) -> None:
             )
 
         except Exception as e:
+            await db.rollback()  # ADR-019: Roll back partial corrupted state before handling failure
             log.exception("process_import.failed", session_id=session_id, error=str(e))
             user_message_vi = _map_exception_to_user_message(e)
             try:
-                session.status = "failed"
-                session.error_summary = {
-                    "error_type": type(e).__name__,
-                    "user_message_vi": user_message_vi,
-                    "internal_detail": str(e)[:200],
-                }
-                await db.flush()
-                await db.commit()
+                session = await db.get(ImportSession, uuid.UUID(session_id))
+                if session:
+                    session.status = "failed"
+                    session.error_summary = {
+                        "error_type": type(e).__name__,
+                        "user_message_vi": user_message_vi,
+                        "internal_detail": str(e)[:200],
+                    }
+                    await db.commit()
             except Exception as flush_err:
                 log.error("process_import.flush_failed", error=str(flush_err))
             # Best-effort: clean up the uploaded file from storage when import fails.
             # Avoids accumulation of orphan files from repeatedly-failing imports.
             # Non-fatal: failure to clean up is logged but never re-raises.
-            if session.file_path:
+            if session and session.file_path:
                 try:
                     from app.core.storage import delete_file as storage_delete_file
 

@@ -75,7 +75,7 @@ async def run_import_rescue(
             max_tokens=500,
             tier=tier,
         )
-        return ImportRescueOutput(**result)
+        return ImportRescueOutput.model_validate(result)
     except Exception as e:
         log.error("ai.import_rescue_failed", error=str(e), shop_id=shop_id)
         # Fallback
@@ -106,7 +106,7 @@ async def run_aha_narrator(
     cached = await cache_get_safe(cache_key)
     if cached:
         log.info("ai.cache_hit", function="aha_narrator", shop_id=shop_id)
-        return AhaNarrativeOutput(**cached)
+        return AhaNarrativeOutput.model_validate(cached)
 
     sanitized = sanitize_for_ai(input_data.model_dump(mode="json"))
     task = (
@@ -126,7 +126,7 @@ async def run_aha_narrator(
             max_tokens=400,
             tier=tier,
         )
-        output = AhaNarrativeOutput(**result)
+        output = AhaNarrativeOutput.model_validate(result)
 
         # Validate numbers
         all_text = f"{output.summary} {output.key_insight} {output.top_action_today}"
@@ -185,7 +185,7 @@ async def run_action_coach(
 
     cached = await cache_get_safe(cache_key)
     if cached:
-        return ActionCoachOutput(**cached)
+        return ActionCoachOutput.model_validate(cached)
 
     sanitized = sanitize_for_ai(input_data.model_dump(mode="json"))
     task = (
@@ -205,7 +205,7 @@ async def run_action_coach(
             max_tokens=400,
             tier=tier,
         )
-        output = ActionCoachOutput(**result)
+        output = ActionCoachOutput.model_validate(result)
         all_text = f"{output.action_title} {output.why_it_matters} {output.recommended_step}"
         validation = validate_numbers_in_text(all_text, input_data.model_dump(mode="json"))
         if not validation.valid:
@@ -244,7 +244,7 @@ async def run_refund_clusterer(
     cache_key = ai_narrative_cache_key(shop_id, snapshot_id, "refund_cluster")
     cached = await cache_get_safe(cache_key)
     if cached:
-        return RefundClusterOutput(**cached)
+        return RefundClusterOutput.model_validate(cached)
 
     # Check injection in reason texts
     clean_reasons = [r for r in input_data.refund_reasons if not detect_injection(r)]
@@ -272,7 +272,7 @@ async def run_refund_clusterer(
             max_tokens=600,
             tier=tier,
         )
-        output = RefundClusterOutput(**result)
+        output = RefundClusterOutput.model_validate(result)
         await cache_set_safe(
             cache_key, output.model_dump(), settings.ai_narrative_cache_ttl_seconds
         )
@@ -319,7 +319,7 @@ async def run_weekly_receipt(
             max_tokens=500,
             tier=tier,
         )
-        output = WeeklyReceiptOutput(**result)
+        output = WeeklyReceiptOutput.model_validate(result)
 
         # Validate numbers
         all_text = f"{output.headline} {output.confirmed_section} {output.estimated_section}"

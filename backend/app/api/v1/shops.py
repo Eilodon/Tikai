@@ -1,4 +1,5 @@
 from datetime import UTC
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -83,22 +84,8 @@ async def create_shop(
 
 @router.get("/shops/me")
 async def get_shop_me(
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    shop: Annotated[Shop, Depends(get_current_shop)],
 ) -> ShopResponse:
-    shop = await db.scalar(
-        select(Shop).where(Shop.owner_id == current_user.id, Shop.is_active == True)  # noqa: E712
-    )
-    if not shop:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": {
-                    "code": "SHOP_NOT_FOUND",
-                    "message": "Chưa có shop. Vui lòng hoàn thành thiết lập.",
-                }
-            },
-        )
     return ShopResponse.model_validate(shop)
 
 
@@ -107,17 +94,9 @@ async def get_shop_me(
 async def update_shop_me(
     request: Request,
     body: UpdateShopRequest,
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_current_shop)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ShopResponse:
-    shop = await db.scalar(
-        select(Shop).where(Shop.owner_id == current_user.id, Shop.is_active == True)  # noqa: E712
-    )
-    if not shop:
-        raise HTTPException(
-            status_code=404,
-            detail={"error": {"code": "SHOP_NOT_FOUND", "message": "Shop không tồn tại."}},
-        )
 
     if body.shop_name is not None:
         shop.shop_name = body.shop_name
@@ -131,9 +110,9 @@ async def update_shop_me(
         shop.zns_enabled = body.zns_enabled
     # Gap #5: dynamic settlement window rates
     if body.ldr_rate is not None:
-        shop.ldr_rate = body.ldr_rate
+        shop.ldr_rate = Decimal(str(body.ldr_rate))
     if body.sfcr_rate is not None:
-        shop.sfcr_rate = body.sfcr_rate
+        shop.sfcr_rate = Decimal(str(body.sfcr_rate))
 
     await db.flush()
     await db.refresh(shop)

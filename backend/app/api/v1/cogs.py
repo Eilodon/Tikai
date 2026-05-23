@@ -45,7 +45,7 @@ def _safe_csv_cell(value: object) -> str:
 class COGSItem(BaseModel):
     sku_id: str
     sku_name: str
-    cogs_per_unit: Decimal = Field(..., gt=0, description="Cost per unit in VND")
+    cogs_per_unit: Decimal = Field(..., gt=Decimal("0"), description="Cost per unit in VND")
 
 
 class COGSBatchRequest(BaseModel):
@@ -154,14 +154,21 @@ async def upsert_cogs(
     """Upsert COGS for multiple SKUs.
     FIX QUAL-05: uses shop.cogs_map ORM column directly.
     """
-    current: dict = dict(shop.cogs_map or {})
+    # FIX: Acquire pessimistic lock to prevent Lost Update on JSONB column
+    shop_locked = await db.scalar(select(Shop).where(Shop.id == shop.id).with_for_update())
+    if not shop_locked:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy dữ liệu Shop."}},
+        )
+    current: dict = dict(shop_locked.cogs_map or {})
     for item in body.items:
         current[item.sku_id] = str(item.cogs_per_unit)
 
-    shop.cogs_map = current
+    shop_locked.cogs_map = current
     from sqlalchemy.orm.attributes import flag_modified
 
-    flag_modified(shop, "cogs_map")
+    flag_modified(shop_locked, "cogs_map")
     await db.flush()
 
     return COGSBatchResponse(
@@ -289,7 +296,14 @@ async def bulk_import_cogs(
             },
         )
 
-    current: dict = dict(shop.cogs_map or {})
+    # FIX: Acquire pessimistic lock to prevent Lost Update
+    shop_locked = await db.scalar(select(Shop).where(Shop.id == shop.id).with_for_update())
+    if not shop_locked:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy dữ liệu Shop."}},
+        )
+    current: dict = dict(shop_locked.cogs_map or {})
     updated = 0
     skipped = 0
     errors: list[str] = []
@@ -319,10 +333,10 @@ async def bulk_import_cogs(
         updated += 1
 
     if updated > 0:
-        shop.cogs_map = current
+        shop_locked.cogs_map = current
         from sqlalchemy.orm.attributes import flag_modified
 
-        flag_modified(shop, "cogs_map")
+        flag_modified(shop_locked, "cogs_map")
         await db.flush()
         await db.commit()
 
@@ -341,7 +355,7 @@ async def bulk_import_cogs(
 
 class COGSEntryItem(BaseModel):
     sku_id: str = Field(..., max_length=100)
-    cogs_per_unit: Decimal = Field(..., gt=0)
+    cogs_per_unit: Decimal = Field(..., gt=Decimal("0"))
     effective_date: date
     note: str | None = Field(None, max_length=200)
 

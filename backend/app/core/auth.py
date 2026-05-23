@@ -8,9 +8,9 @@ from datetime import UTC
 from typing import Annotated
 
 import structlog
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import JWTError, jwt  # type: ignore
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,28 +72,63 @@ async def get_current_user(
 
 
 async def get_current_shop(
+    request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Shop:
     """INVARIANT: every request that touches business data goes through this."""
     from datetime import datetime
 
-    shop = await db.scalar(
-        select(Shop).where(
-            Shop.owner_id == current_user.id,
-            Shop.is_active == True,  # noqa: E712
+    shop_id_header = request.headers.get("x-shop-id")
+
+    if shop_id_header:
+        try:
+            shop_uuid = uuid.UUID(shop_id_header)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": {
+                        "code": "INVALID_SHOP_ID",
+                        "message": "ID shop không hợp lệ.",
+                    }
+                },
+            )
+        shop = await db.scalar(
+            select(Shop).where(
+                Shop.id == shop_uuid,
+                Shop.owner_id == current_user.id,
+                Shop.is_active == True,  # noqa: E712
+            )
         )
-    )
-    if not shop:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": {
-                    "code": "SHOP_NOT_FOUND",
-                    "message": "Chưa có shop. Vui lòng hoàn thành thiết lập.",
-                }
-            },
+        if not shop:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": {
+                        "code": "SHOP_NOT_FOUND",
+                        "message": "Không tìm thấy shop yêu cầu hoặc bạn không có quyền truy cập.",
+                    }
+                },
+            )
+    else:
+        shop = await db.scalar(
+            select(Shop).where(
+                Shop.owner_id == current_user.id,
+                Shop.is_active == True,  # noqa: E712
+            )
         )
+        if not shop:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": {
+                        "code": "SHOP_NOT_FOUND",
+                        "message": "Chưa có shop. Vui lòng hoàn thành thiết lập.",
+                    }
+                },
+            )
+
     # P4-2: auto-expire trial when trial_expires_at is in the past
     if shop.subscription_tier == "pro_trial":
         expires = getattr(shop, "trial_expires_at", None)

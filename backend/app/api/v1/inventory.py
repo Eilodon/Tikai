@@ -59,7 +59,14 @@ async def set_stock(
     """Set current stock level for a SKU. Pro+ only."""
     require_feature(shop, Feature.INVENTORY_TRACKING)
 
-    current_map: dict = shop.stock_map or {}
+    # FIX: Acquire pessimistic lock to prevent Lost Update on JSONB
+    shop_locked = await db.scalar(select(Shop).where(Shop.id == shop.id).with_for_update())
+    if not shop_locked:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy dữ liệu Shop."}},
+        )
+    current_map: dict = shop_locked.stock_map or {}
     current_map[body.sku_id] = body.stock_on_hand
 
     from sqlalchemy import update
@@ -84,7 +91,14 @@ async def remove_stock(
     """Remove stock entry for a SKU."""
     require_feature(shop, Feature.INVENTORY_TRACKING)
 
-    current_map: dict = dict(shop.stock_map or {})
+    # FIX: Acquire pessimistic lock to prevent Lost Update
+    shop_locked = await db.scalar(select(Shop).where(Shop.id == shop.id).with_for_update())
+    if not shop_locked:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy dữ liệu Shop."}},
+        )
+    current_map: dict = dict(shop_locked.stock_map or {})
     if sku_id not in current_map:
         raise HTTPException(
             404,

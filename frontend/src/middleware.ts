@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
 
   let response = NextResponse.next({ request })
 
-  if (process.env.E2E_AUTH_BYPASS === "true") {
+  if (process.env.E2E_AUTH_BYPASS === "true" && process.env.NODE_ENV !== "production") {
     return response
   }
 

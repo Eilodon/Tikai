@@ -1,0 +1,7 @@
+INIT_DATE: 2026-05-23
+INIT_VERSION: super-skills-v2
+GIT_ROOT: /home/ybao/B.1/Tikai
+HARNESS: antigravity
+TASK_TOOL: NO
+ARTIFACTS_API: YES
+STATUS: READY

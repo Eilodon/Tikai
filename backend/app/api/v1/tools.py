@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.insights import _safe_parse
 from app.core.auth import get_current_shop
 from app.core.database import get_db
 from app.core.rate_limit import limiter
@@ -26,18 +27,6 @@ from app.services.rule_engine.simulator import SimulatorParams, simulate_sku
 
 router = APIRouter()
 log = structlog.get_logger()
-
-
-def _safe_parse_tools(schema_class, items: list) -> list:
-    result = []
-    for item in items:
-        try:
-            result.append(schema_class(**item))
-        except Exception:
-            pass
-    return result
-
-
 async def _get_latest_fee_config_data(db: AsyncSession, platform: str = "tiktok") -> FeeConfigData:
     config = await db.scalar(
         select(FeeConfig)
@@ -266,7 +255,7 @@ async def simulate(
             detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy snapshot."}},
         )
 
-    top_skus = _safe_parse_tools(SKUSummaryItem, snapshot.top_skus_json or [])
+    top_skus = _safe_parse(SKUSummaryItem, snapshot.top_skus_json or [])
     sku = next((s for s in top_skus if s.sku_id == body.sku_id), None)
     if not sku:
         raise HTTPException(
@@ -348,7 +337,7 @@ async def simulate_campaign(
             detail={"error": {"code": "NOT_FOUND", "message": "Không tìm thấy snapshot."}},
         )
 
-    top_skus = _safe_parse_tools(SKUSummaryItem, snapshot.top_skus_json or [])
+    top_skus = _safe_parse(SKUSummaryItem, snapshot.top_skus_json or [])
     sku_index = {s.sku_id: s for s in top_skus}
     fee_config = await _get_latest_fee_config_data(db)
     raw_cogs = shop.cogs_map or {}

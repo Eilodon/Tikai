@@ -13,7 +13,7 @@ import hashlib
 import io
 import uuid
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -62,7 +62,7 @@ def _safe_parse(schema_class, items: list) -> list:
     first_error = None
     for item in items:
         try:
-            result.append(schema_class(**item))
+            result.append(schema_class.model_validate(item))
         except Exception as e:
             error_count += 1
             if first_error is None:
@@ -228,10 +228,10 @@ async def get_benchmark(
     # Compute shop-level margin_pct from top_skus (weighted by GMV)
     top_skus = _safe_parse(SKUSummaryItem, snapshot.top_skus_json or [])
     total_gmv = sum(s.gmv for s in top_skus)
-    shop_margin_pct = None
+    shop_margin_pct: Decimal | None = None
     if total_gmv > 0:
-        weighted_margin = sum(s.margin_pct * s.gmv for s in top_skus if s.margin_pct is not None)
-        skus_with_margin_gmv = sum(s.gmv for s in top_skus if s.margin_pct is not None)
+        weighted_margin = sum((s.margin_pct * s.gmv for s in top_skus if s.margin_pct is not None), Decimal("0"))
+        skus_with_margin_gmv = sum((s.gmv for s in top_skus if s.margin_pct is not None), Decimal("0"))
         if skus_with_margin_gmv > 0:
             shop_margin_pct = weighted_margin / skus_with_margin_gmv
 
@@ -1071,13 +1071,11 @@ async def get_aggregate_overview(
     )
     snapshots = {s.shop_id: s for s in snap_rows}
 
-    {s.id: s.shop_name for s in shop_list}
-
     total_gmv = Decimal("0")
     total_net_revenue = Decimal("0")
     total_orders = 0
     total_refunds = 0
-    per_shop = []
+    per_shop: list[dict[str, Any]] = []
 
     for s in shop_list:
         snap = snapshots.get(s.id)

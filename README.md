@@ -251,7 +251,7 @@ All backend config lives in `backend/app/core/config.py` (Pydantic Settings). Re
 
 ```env
 # App
-ENVIRONMENT=development          # development | production
+ENVIRONMENT=development          # development | staging | production
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/tikai
 REDIS_URL=redis://localhost:6379
 
@@ -269,12 +269,13 @@ AI_MAX_COST_PER_MONTH_USD_FREE=0.15
 AI_MAX_COST_PER_MONTH_USD_PRO=0.50
 AI_MAX_COST_PER_MONTH_USD_BUSINESS=1.00
 
-# CORS
+# CORS (In staging/production, must not point to localhost)
 ALLOWED_ORIGINS=["http://localhost:3000"]
 
 # Email — optional, required for weekly digest emails
 SENDGRID_API_KEY=...
 EMAIL_FROM_ADDRESS=noreply@tikai.vn
+APP_BASE_URL=https://app.tikai.vn # Set to https://staging.tikai.vn for staging
 
 # Web Push — optional, required for daily push alerts
 VAPID_PRIVATE_KEY=...
@@ -285,9 +286,19 @@ VAPID_CLAIMS_EMAIL=admin@tikai.vn
 ZALO_OA_ID=...
 ZALO_ZNS_ACCESS_TOKEN=...
 
-# Monitoring — optional
+# Monitoring (Required in staging/production)
 SENTRY_DSN=https://xxx@sentry.io/123456
+
+# Admin API — optional
+ADMIN_SECRET=...                 # Min 16 chars if set
 ```
+
+> [!IMPORTANT]
+> **Production & Staging Validation Safeguards (Fail-Fast):**
+> 1. `SENTRY_DSN` is strictly required in `production` and `staging`.
+> 2. `DATABASE_URL` must include SSL parameter (`sslmode=require` or `ssl=true`) in `production` and `staging` to protect customer data.
+> 3. `ALLOWED_ORIGINS` cannot contain `localhost` in `production` or `staging`.
+> 4. `APP_BASE_URL` must not be set to the production default (`app.tikai.vn`) when in `staging` environment.
 
 Frontend (`.env.local`):
 ```env

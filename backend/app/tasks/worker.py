@@ -14,6 +14,7 @@ from arq.connections import RedisSettings
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.core.sentry import init_sentry
 from app.services.email.client import send_weekly_digest
 from app.tasks.daily_alerts import trigger_daily_alerts
 from app.tasks.process_import import process_import
@@ -24,6 +25,9 @@ log = structlog.get_logger()
 
 
 async def startup(ctx: dict) -> None:
+    # Initialize Sentry for worker process
+    init_sentry(is_worker=True)
+
     # ADR-ARCH-004: reduced pool size — worker is a single process so 5+5=10 connections
     # is sufficient and leaves headroom for 2 API replicas (5+10 each = 30 total vs
     # Supabase Pro limit of 100 or free limit of 15).

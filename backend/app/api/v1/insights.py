@@ -230,8 +230,8 @@ async def get_benchmark(
     total_gmv = sum(s.gmv for s in top_skus)
     shop_margin_pct: Decimal | None = None
     if total_gmv > 0:
-        weighted_margin = sum(s.margin_pct * s.gmv for s in top_skus if s.margin_pct is not None)
-        skus_with_margin_gmv = sum(s.gmv for s in top_skus if s.margin_pct is not None)
+        weighted_margin = sum((s.margin_pct * s.gmv for s in top_skus if s.margin_pct is not None), Decimal("0"))
+        skus_with_margin_gmv = sum((s.gmv for s in top_skus if s.margin_pct is not None), Decimal("0"))
         if skus_with_margin_gmv > 0:
             shop_margin_pct = weighted_margin / skus_with_margin_gmv
 
